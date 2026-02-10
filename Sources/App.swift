@@ -21,7 +21,7 @@ struct PRStatusWatcherApp: App {
                 .environmentObject(manager)
         } label: {
             HStack(spacing: 3) {
-                Image(systemName: manager.overallStatusIcon)
+                Image(nsImage: manager.menuBarImage)
                 if !manager.pullRequests.isEmpty {
                     Text("\(manager.pullRequests.count)")
                         .font(.caption2)

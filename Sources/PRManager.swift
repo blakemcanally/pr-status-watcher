@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 // MARK: - PR Manager (ViewModel)
 
@@ -40,6 +41,51 @@ final class PRManager: ObservableObject {
             return "checkmark.circle"
         }
         return "checkmark.circle.fill"
+    }
+
+    var hasFailure: Bool {
+        pullRequests.contains(where: { $0.ciStatus == .failure })
+    }
+
+    /// Menu bar image with a red badge dot when CI is failing.
+    var menuBarImage: NSImage {
+        let symbolName = overallStatusIcon
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        let base = NSImage(systemSymbolName: symbolName, accessibilityDescription: "PR Status")?
+            .withSymbolConfiguration(config) ?? NSImage()
+
+        guard hasFailure else {
+            let img = base.copy() as! NSImage
+            img.isTemplate = true
+            return img
+        }
+
+        // Composite the icon with a red badge dot
+        let size = NSSize(width: 20, height: 16)
+        let image = NSImage(size: size, flipped: false) { rect in
+            // Draw the base icon (left-aligned, vertically centered)
+            let iconSize = base.size
+            let iconOrigin = NSPoint(
+                x: 0,
+                y: (rect.height - iconSize.height) / 2
+            )
+            base.draw(at: iconOrigin, from: .zero, operation: .sourceOver, fraction: 1.0)
+
+            // Red dot badge in the top-right corner
+            let dotSize: CGFloat = 5
+            let dotRect = NSRect(
+                x: iconSize.width - 2,
+                y: rect.height - dotSize - 1,
+                width: dotSize,
+                height: dotSize
+            )
+            NSColor.systemRed.setFill()
+            NSBezierPath(ovalIn: dotRect).fill()
+
+            return true
+        }
+        image.isTemplate = false
+        return image
     }
 
     // MARK: - Refresh (single GraphQL call)
