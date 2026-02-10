@@ -20,12 +20,10 @@ struct PRStatusWatcherApp: App {
             ContentView()
                 .environmentObject(manager)
         } label: {
-            HStack(spacing: 3) {
+            HStack(spacing: 2) {
                 Image(nsImage: manager.menuBarImage)
-                if !manager.pullRequests.isEmpty {
-                    Text("\(manager.pullRequests.count)")
-                        .font(.caption2)
-                }
+                Text(manager.statusBarSummary)
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
             }
         }
         .menuBarExtraStyle(.window)

@@ -47,6 +47,29 @@ final class PRManager: ObservableObject {
         pullRequests.contains(where: { $0.ciStatus == .failure })
     }
 
+    var openCount: Int {
+        pullRequests.filter { $0.state == .open && !$0.isInMergeQueue }.count
+    }
+
+    var draftCount: Int {
+        pullRequests.filter { $0.state == .draft }.count
+    }
+
+    var queuedCount: Int {
+        pullRequests.filter { $0.isInMergeQueue }.count
+    }
+
+    /// Compact summary for the menu bar, e.g. "3·10·2"
+    /// Order is Draft · Open · Queued (RTL mirrors the PR lifecycle flow).
+    var statusBarSummary: String {
+        guard !pullRequests.isEmpty else { return "" }
+        var parts: [String] = []
+        if draftCount > 0  { parts.append("\(draftCount)") }
+        if openCount > 0   { parts.append("\(openCount)") }
+        if queuedCount > 0 { parts.append("\(queuedCount)") }
+        return parts.joined(separator: "·")
+    }
+
     /// Menu bar image with a red badge dot when CI is failing.
     var menuBarImage: NSImage {
         let symbolName = overallStatusIcon
