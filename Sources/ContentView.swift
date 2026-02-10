@@ -10,22 +10,11 @@ struct ContentView: View {
         let dict = Dictionary(grouping: manager.pullRequests, by: \.repoFullName)
         return dict.keys.sorted().map { key in
             (repo: key, prs: (dict[key] ?? []).sorted {
-                let lhsPriority = statePriority($0)
-                let rhsPriority = statePriority($1)
+                let lhsPriority = $0.sortPriority
+                let rhsPriority = $1.sortPriority
                 if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
                 return $0.number < $1.number
             })
-        }
-    }
-
-    /// Sort priority: Open = 0, Draft = 1, Queued = 2.
-    private func statePriority(_ pullRequest: PullRequest) -> Int {
-        if pullRequest.isInMergeQueue { return 2 }
-        switch pullRequest.state {
-        case .open:   return 0
-        case .draft:  return 1
-        case .merged: return 3
-        case .closed: return 3
         }
     }
 
@@ -152,7 +141,7 @@ struct ContentView: View {
                     HStack(spacing: 3) {
                         ForEach(prs) { pullRequest in
                             Circle()
-                                .fill(ciDotColor(for: pullRequest))
+                                .fill(pullRequest.statusColor)
                                 .frame(width: 6, height: 6)
                         }
                     }
@@ -186,15 +175,6 @@ struct ContentView: View {
         }
     }
 
-    private func ciDotColor(for pullRequest: PullRequest) -> Color {
-        switch pullRequest.ciStatus {
-        case .success: return .green
-        case .failure: return .red
-        case .pending: return .orange
-        case .unknown: return .gray
-        }
-    }
-
     // MARK: - Empty State
 
     private var emptyState: some View {
@@ -220,26 +200,7 @@ struct ContentView: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            // gh user info
-            if let user = manager.ghUser {
-                HStack(spacing: 4) {
-                    Image(systemName: "person.circle.fill")
-                        .font(.caption)
-                        .foregroundColor(.green)
-                    Text(user)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            } else {
-                HStack(spacing: 4) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                    Text("gh not authenticated")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
+            AuthStatusView(username: manager.ghUser, style: .compact)
 
             Spacer()
 

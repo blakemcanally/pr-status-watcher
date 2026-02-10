@@ -98,36 +98,12 @@ struct PRRowView: View {
 
     // MARK: - Status Color
 
-    private var statusColor: Color {
-        switch pullRequest.state {
-        case .merged: return .purple
-        case .closed: return .gray
-        case .draft: return .gray
-        case .open:
-            if pullRequest.isInMergeQueue { return .purple }
-            switch pullRequest.ciStatus {
-            case .success: return .green
-            case .failure: return .red
-            case .pending: return .orange
-            case .unknown: return .gray
-            }
-        }
-    }
+    private var statusColor: Color { pullRequest.statusColor }
 
     // MARK: - State Badge
 
     private var stateBadge: some View {
-        HStack(spacing: 3) {
-            Image(systemName: stateIcon)
-                .font(.caption2)
-            Text(stateText)
-                .font(.caption2.weight(.medium))
-        }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(statusColor.opacity(0.15))
-        .foregroundColor(statusColor)
-        .cornerRadius(4)
+        badgePill(icon: stateIcon, text: stateText, color: statusColor)
     }
 
     private var stateIcon: String {
@@ -199,21 +175,17 @@ struct PRRowView: View {
                     }
                 }
             } label: {
-                HStack(spacing: 3) {
-                    Image(systemName: ciIcon)
-                        .font(.caption2)
-                    Text(ciText)
-                        .font(.caption2.weight(.medium))
-                    if !pullRequest.failedChecks.isEmpty {
-                        Image(systemName: showFailures ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 7, weight: .bold))
-                    }
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(ciColor.opacity(0.12))
-                .foregroundColor(ciColor)
-                .cornerRadius(4)
+                badgePill(
+                    icon: ciIcon,
+                    text: ciText,
+                    color: pullRequest.ciStatus.color,
+                    trailing: !pullRequest.failedChecks.isEmpty ? {
+                        AnyView(
+                            Image(systemName: showFailures ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 7, weight: .bold))
+                        )
+                    } : nil
+                )
             }
             .buttonStyle(.plain)
         }
@@ -239,23 +211,20 @@ struct PRRowView: View {
         return "\(pullRequest.checksPassed)/\(pullRequest.checksTotal) passed"
     }
 
-    private var ciColor: Color {
-        switch pullRequest.ciStatus {
-        case .success: return .green
-        case .failure: return .red
-        case .pending: return .orange
-        case .unknown: return .secondary
-        }
-    }
-
     // MARK: - Badge Helper
 
-    private func badgePill(icon: String, text: String, color: Color) -> some View {
+    private func badgePill(
+        icon: String,
+        text: String,
+        color: Color,
+        trailing: (() -> AnyView)? = nil
+    ) -> some View {
         HStack(spacing: 3) {
             Image(systemName: icon)
                 .font(.caption2)
             Text(text)
                 .font(.caption2.weight(.medium))
+            if let trailing { trailing() }
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)

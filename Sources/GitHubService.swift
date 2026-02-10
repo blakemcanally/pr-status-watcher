@@ -19,14 +19,6 @@ final class GitHubService: @unchecked Sendable {
 
     // MARK: - Public API
 
-    /// Check that `gh` is installed and authenticated.
-    func checkCLI() throws {
-        let (_, _, exit) = try run(["auth", "status"])
-        if exit != 0 {
-            throw GHError.notAuthenticated
-        }
-    }
-
     /// Returns the GitHub username from `gh auth status`.
     func currentUser() -> String? {
         guard let (out, _, _) = try? run(["auth", "status", "--active"]) else { return nil }

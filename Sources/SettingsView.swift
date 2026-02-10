@@ -24,39 +24,7 @@ struct SettingsView: View {
                 Text("GitHub Authentication")
                     .font(.headline)
 
-                if let user = manager.ghUser {
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(.green)
-                        Text("Signed in as **\(user)**")
-                        Spacer()
-                    }
-                    .padding(10)
-                    .background(Color.green.opacity(0.08))
-                    .cornerRadius(8)
-                } else {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.orange)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Not authenticated")
-                                .font(.body.weight(.medium))
-                            Text("Run this command in your terminal:")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                            Text("gh auth login")
-                                .font(.system(.caption, design: .monospaced))
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(Color.secondary.opacity(0.12))
-                                .cornerRadius(4)
-                        }
-                        Spacer()
-                    }
-                    .padding(10)
-                    .background(Color.orange.opacity(0.08))
-                    .cornerRadius(8)
-                }
+                AuthStatusView(username: manager.ghUser, style: .detailed)
             }
 
             Divider()
