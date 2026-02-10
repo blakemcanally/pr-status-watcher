@@ -36,7 +36,7 @@ struct ContentView: View {
             Divider()
             footer
         }
-        .frame(width: 400, height: 480)
+        .frame(width: 460, height: 520)
     }
 
     // MARK: - Header
@@ -242,11 +242,18 @@ struct ContentView: View {
                     .help(error)
             }
 
-            Text("Refreshes every 60s")
+            Text("Refreshes every \(manager.refreshIntervalLabel)")
                 .font(.caption2)
                 .foregroundColor(.secondary)
 
             Spacer()
+
+            Button(action: openSettings) {
+                Image(systemName: "gear")
+                    .font(.caption)
+            }
+            .buttonStyle(.borderless)
+            .help("Settings")
 
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
@@ -256,5 +263,12 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    // MARK: - Actions
+
+    private func openSettings() {
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct PRRowView: View {
     let pr: PullRequest
+    @State private var showFailures = false
 
     var body: some View {
         Button(action: { NSWorkspace.shared.open(pr.url) }) {
@@ -30,16 +31,52 @@ struct PRRowView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
 
-                    // Status badges row
-                    HStack(spacing: 8) {
+                    // Status badges row — prioritize actionable info
+                    // Review badge only shown when CI is passing or unknown (not actionable during failure/pending)
+                    HStack(spacing: 6) {
                         stateBadge
+                        conflictBadge
                         ciBadge
+                        if pr.state != .draft && (pr.ciStatus == .success || pr.ciStatus == .unknown) {
+                            reviewBadge
+                        }
                         Spacer()
                         if !pr.headSHA.isEmpty {
                             Text(pr.headSHA)
                                 .font(.system(.caption2, design: .monospaced))
                                 .foregroundColor(.secondary.opacity(0.6))
                         }
+                    }
+
+                    // Expandable failed checks list
+                    if showFailures && !pr.failedChecks.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            ForEach(pr.failedChecks.indices, id: \.self) { i in
+                                let check = pr.failedChecks[i]
+                                Button(action: {
+                                    if let url = check.detailsUrl {
+                                        NSWorkspace.shared.open(url)
+                                    }
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.caption2)
+                                            .foregroundColor(.red)
+                                        Text(check.name)
+                                            .font(.caption2)
+                                            .foregroundColor(.red)
+                                            .lineLimit(1)
+                                        if check.detailsUrl != nil {
+                                            Image(systemName: "arrow.up.right")
+                                                .font(.system(size: 7))
+                                                .foregroundColor(.red.opacity(0.6))
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.top, 2)
                     }
                 }
 
@@ -106,7 +143,13 @@ struct PRRowView: View {
     private var stateText: String {
         switch pr.state {
         case .open:
-            return pr.isInMergeQueue ? "Merge Queue" : "Open"
+            if pr.isInMergeQueue {
+                if let pos = pr.queuePosition {
+                    return "Queue #\(pos)"
+                }
+                return "Merge Queue"
+            }
+            return "Open"
         case .closed:
             return "Closed"
         case .merged:
@@ -116,22 +159,60 @@ struct PRRowView: View {
         }
     }
 
+    // MARK: - Review Badge
+
+    @ViewBuilder
+    private var reviewBadge: some View {
+        switch pr.reviewDecision {
+        case .approved:
+            badgePill(icon: "checkmark.circle.fill", text: "Approved", color: .green)
+        case .changesRequested:
+            badgePill(icon: "exclamationmark.circle.fill", text: "Changes", color: .red)
+        case .reviewRequired:
+            badgePill(icon: "eye.fill", text: "Review", color: .orange)
+        case .none:
+            EmptyView()
+        }
+    }
+
+    // MARK: - Conflict Badge
+
+    @ViewBuilder
+    private var conflictBadge: some View {
+        if pr.mergeable == .conflicting {
+            badgePill(icon: "exclamationmark.triangle.fill", text: "Conflicts", color: .red)
+        }
+    }
+
     // MARK: - CI Badge
 
     @ViewBuilder
     private var ciBadge: some View {
         if pr.checksTotal > 0 {
-            HStack(spacing: 3) {
-                Image(systemName: ciIcon)
-                    .font(.caption2)
-                Text(ciText)
-                    .font(.caption2.weight(.medium))
+            Button(action: {
+                if !pr.failedChecks.isEmpty {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        showFailures.toggle()
+                    }
+                }
+            }) {
+                HStack(spacing: 3) {
+                    Image(systemName: ciIcon)
+                        .font(.caption2)
+                    Text(ciText)
+                        .font(.caption2.weight(.medium))
+                    if !pr.failedChecks.isEmpty {
+                        Image(systemName: showFailures ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 7, weight: .bold))
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(ciColor.opacity(0.12))
+                .foregroundColor(ciColor)
+                .cornerRadius(4)
             }
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(ciColor.opacity(0.12))
-            .foregroundColor(ciColor)
-            .cornerRadius(4)
+            .buttonStyle(.plain)
         }
     }
 
@@ -162,5 +243,21 @@ struct PRRowView: View {
         case .pending: return .orange
         case .unknown: return .secondary
         }
+    }
+
+    // MARK: - Badge Helper
+
+    private func badgePill(icon: String, text: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.caption2)
+            Text(text)
+                .font(.caption2.weight(.medium))
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(color.opacity(0.12))
+        .foregroundColor(color)
+        .cornerRadius(4)
     }
 }

@@ -27,5 +27,10 @@ struct PRStatusWatcherApp: App {
             }
         }
         .menuBarExtraStyle(.window)
+
+        Settings {
+            SettingsView()
+                .environmentObject(manager)
+        }
     }
 }

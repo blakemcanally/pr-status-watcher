@@ -19,6 +19,10 @@ struct PullRequest: Identifiable {
     var url: URL
     var headSHA: String
     var lastFetched: Date
+    var reviewDecision: ReviewDecision
+    var mergeable: MergeableState
+    var queuePosition: Int?
+    var failedChecks: [CheckInfo]
 
     var repoFullName: String { "\(owner)/\(repo)" }
     var displayNumber: String { "#\(number)" }
@@ -37,6 +41,28 @@ struct PullRequest: Identifiable {
         case failure
         case pending
         case unknown
+    }
+
+    // MARK: Review & Merge Enums
+
+    enum ReviewDecision: String {
+        case approved
+        case changesRequested
+        case reviewRequired
+        case none
+    }
+
+    enum MergeableState: String {
+        case mergeable
+        case conflicting
+        case unknown
+    }
+
+    // MARK: Check Info
+
+    struct CheckInfo {
+        let name: String
+        let detailsUrl: URL?
     }
 }
 
@@ -58,7 +84,11 @@ extension PullRequest {
             checksFailed: 0,
             url: URL(string: "https://github.com/\(owner)/\(repo)/pull/\(number)")!,
             headSHA: "",
-            lastFetched: .distantPast
+            lastFetched: .distantPast,
+            reviewDecision: .none,
+            mergeable: .unknown,
+            queuePosition: nil,
+            failedChecks: []
         )
     }
 }

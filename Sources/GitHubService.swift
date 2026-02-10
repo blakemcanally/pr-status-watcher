@@ -60,6 +60,8 @@ final class GitHubService: @unchecked Sendable {
                 state
                 url
                 repository { nameWithOwner }
+                reviewDecision
+                mergeable
                 mergeQueueEntry { position }
                 headRefOid
                 commits(last: 1) {
@@ -71,8 +73,10 @@ final class GitHubService: @unchecked Sendable {
                           totalCount
                           nodes {
                             ... on CheckRun {
+                              name
                               status
                               conclusion
+                              detailsUrl
                             }
                           }
                         }
@@ -128,6 +132,26 @@ final class GitHubService: @unchecked Sendable {
         let rawState = node["state"] as? String ?? "OPEN"
         let headSHA = node["headRefOid"] as? String ?? ""
         let mergeQueueEntry = node["mergeQueueEntry"] as? [String: Any]
+        let queuePosition = mergeQueueEntry?["position"] as? Int
+
+        // Review decision
+        let rawReview = node["reviewDecision"] as? String ?? ""
+        let reviewDecision: PullRequest.ReviewDecision
+        switch rawReview {
+        case "APPROVED":          reviewDecision = .approved
+        case "CHANGES_REQUESTED": reviewDecision = .changesRequested
+        case "REVIEW_REQUIRED":   reviewDecision = .reviewRequired
+        default:                  reviewDecision = .none
+        }
+
+        // Mergeable state
+        let rawMergeable = node["mergeable"] as? String ?? ""
+        let mergeable: PullRequest.MergeableState
+        switch rawMergeable {
+        case "MERGEABLE":   mergeable = .mergeable
+        case "CONFLICTING": mergeable = .conflicting
+        default:            mergeable = .unknown
+        }
 
         let state: PullRequest.PRState
         switch rawState {
@@ -153,7 +177,11 @@ final class GitHubService: @unchecked Sendable {
             checksFailed: ci.failed,
             url: url,
             headSHA: String(headSHA.prefix(7)),
-            lastFetched: Date()
+            lastFetched: Date(),
+            reviewDecision: reviewDecision,
+            mergeable: mergeable,
+            queuePosition: queuePosition,
+            failedChecks: ci.failedChecks
         )
     }
 
@@ -162,6 +190,7 @@ final class GitHubService: @unchecked Sendable {
         let total: Int
         let passed: Int
         let failed: Int
+        let failedChecks: [PullRequest.CheckInfo]
     }
 
     private func parseCheckStatus(from node: [String: Any]) -> CIResult {
@@ -175,10 +204,11 @@ final class GitHubService: @unchecked Sendable {
               let totalCount = contexts["totalCount"] as? Int,
               let contextNodes = contexts["nodes"] as? [[String: Any]]
         else {
-            return CIResult(status: .unknown, total: 0, passed: 0, failed: 0)
+            return CIResult(status: .unknown, total: 0, passed: 0, failed: 0, failedChecks: [])
         }
 
         var passed = 0, failed = 0, pending = 0
+        var failedChecks: [PullRequest.CheckInfo] = []
 
         for ctx in contextNodes {
             let status = ctx["status"] as? String ?? ""
@@ -196,6 +226,11 @@ final class GitHubService: @unchecked Sendable {
                     passed += 1
                 default:
                     failed += 1
+                    // Collect failed check info
+                    if let name = ctx["name"] as? String {
+                        let detailsUrl = (ctx["detailsUrl"] as? String).flatMap { URL(string: $0) }
+                        failedChecks.append(PullRequest.CheckInfo(name: name, detailsUrl: detailsUrl))
+                    }
                 }
             } else {
                 pending += 1
@@ -223,7 +258,7 @@ final class GitHubService: @unchecked Sendable {
             ciStatus = .success
         }
 
-        return CIResult(status: ciStatus, total: totalCount, passed: passed, failed: failed)
+        return CIResult(status: ciStatus, total: totalCount, passed: passed, failed: failed, failedChecks: failedChecks)
     }
 
     // MARK: - gh CLI Helpers
