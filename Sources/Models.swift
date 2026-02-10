@@ -70,7 +70,13 @@ struct PullRequest: Identifiable {
 
 extension PullRequest {
     static func placeholder(owner: String, repo: String, number: Int) -> PullRequest {
-        PullRequest(
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "github.com"
+        components.path = "/\(owner)/\(repo)/pull/\(number)"
+        let placeholderURL = components.url ?? Self.fallbackURL
+
+        return PullRequest(
             owner: owner,
             repo: repo,
             number: number,
@@ -82,7 +88,7 @@ extension PullRequest {
             checksTotal: 0,
             checksPassed: 0,
             checksFailed: 0,
-            url: URL(string: "https://github.com/\(owner)/\(repo)/pull/\(number)")!,
+            url: placeholderURL,
             headSHA: "",
             lastFetched: .distantPast,
             reviewDecision: .none,
@@ -91,6 +97,18 @@ extension PullRequest {
             failedChecks: []
         )
     }
+
+    /// Safe fallback URL built from known-valid components.
+    private static let fallbackURL: URL = {
+        var components = URLComponents()
+        components.scheme = "https"
+        components.host = "github.com"
+        // URLComponents.url is guaranteed non-nil for valid scheme+host
+        guard let url = components.url else {
+            fatalError("Unable to construct fallback GitHub URL from known-valid components")
+        }
+        return url
+    }()
 }
 
 // MARK: - PR URL / Reference Parser
@@ -109,13 +127,11 @@ struct PRReference {
         // Try full URL format
         if let url = URL(string: trimmed),
            let host = url.host,
-           (host == "github.com" || host == "www.github.com")
-        {
+           host == "github.com" || host == "www.github.com" {
             let parts = url.pathComponents
             // pathComponents: ["/", "owner", "repo", "pull", "123"]
             if parts.count >= 5, parts[3] == "pull",
-               let num = Int(parts[4])
-            {
+               let num = Int(parts[4]) {
                 return PRReference(owner: parts[1], repo: parts[2], number: num)
             }
         }
@@ -127,8 +143,7 @@ struct PRReference {
            let ownerRange = Range(match.range(at: 1), in: trimmed),
            let repoRange = Range(match.range(at: 2), in: trimmed),
            let numRange = Range(match.range(at: 3), in: trimmed),
-           let num = Int(trimmed[numRange])
-        {
+           let num = Int(trimmed[numRange]) {
             return PRReference(
                 owner: String(trimmed[ownerRange]),
                 repo: String(trimmed[repoRange]),

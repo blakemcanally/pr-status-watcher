@@ -8,7 +8,7 @@ struct SettingsView: View {
         ("1 minute", 60),
         ("90 seconds", 90),
         ("2 minutes", 120),
-        ("5 minutes", 300),
+        ("5 minutes", 300)
     ]
 
     var body: some View {

@@ -86,8 +86,8 @@ final class PRManager: ObservableObject {
     var statusBarSummary: String {
         guard !pullRequests.isEmpty else { return "" }
         var parts: [String] = []
-        if draftCount > 0  { parts.append("\(draftCount)") }
-        if openCount > 0   { parts.append("\(openCount)") }
+        if draftCount > 0 { parts.append("\(draftCount)") }
+        if openCount > 0 { parts.append("\(openCount)") }
         if queuedCount > 0 { parts.append("\(queuedCount)") }
         return parts.joined(separator: "·")
     }
@@ -100,9 +100,11 @@ final class PRManager: ObservableObject {
             .withSymbolConfiguration(config) ?? NSImage()
 
         guard hasFailure else {
-            let img = base.copy() as! NSImage
-            img.isTemplate = true
-            return img
+            if let img = base.copy() as? NSImage {
+                img.isTemplate = true
+                return img
+            }
+            return base
         }
 
         // Composite the icon with a red badge dot
@@ -206,27 +208,27 @@ final class PRManager: ObservableObject {
     private func checkForStatusChanges(newPRs: [PullRequest]) {
         let newIds = Set(newPRs.map { $0.id })
 
-        for pr in newPRs {
-            guard let oldStatus = previousCIStates[pr.id] else {
+        for pullRequest in newPRs {
+            guard let oldStatus = previousCIStates[pullRequest.id] else {
                 // New PR appeared — no notification needed
                 continue
             }
 
             // CI went from pending -> failure
-            if oldStatus == .pending && pr.ciStatus == .failure {
+            if oldStatus == .pending && pullRequest.ciStatus == .failure {
                 sendNotification(
                     title: "CI Failed",
-                    body: "\(pr.repoFullName) \(pr.displayNumber): \(pr.title)",
-                    url: pr.url
+                    body: "\(pullRequest.repoFullName) \(pullRequest.displayNumber): \(pullRequest.title)",
+                    url: pullRequest.url
                 )
             }
 
             // CI went from pending -> success
-            if oldStatus == .pending && pr.ciStatus == .success {
+            if oldStatus == .pending && pullRequest.ciStatus == .success {
                 sendNotification(
                     title: "All Checks Passed",
-                    body: "\(pr.repoFullName) \(pr.displayNumber): \(pr.title)",
-                    url: pr.url
+                    body: "\(pullRequest.repoFullName) \(pullRequest.displayNumber): \(pullRequest.title)",
+                    url: pullRequest.url
                 )
             }
         }

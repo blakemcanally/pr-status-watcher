@@ -1,11 +1,13 @@
 import SwiftUI
 
 struct PRRowView: View {
-    let pr: PullRequest
+    let pullRequest: PullRequest
     @State private var showFailures = false
 
     var body: some View {
-        Button(action: { NSWorkspace.shared.open(pr.url) }) {
+        Button {
+            NSWorkspace.shared.open(pullRequest.url)
+        } label: {
             HStack(spacing: 10) {
                 // Status dot
                 Circle()
@@ -15,18 +17,18 @@ struct PRRowView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     // PR number + author
                     HStack(spacing: 4) {
-                        Text(pr.displayNumber)
+                        Text(pullRequest.displayNumber)
                             .font(.caption.weight(.semibold))
                             .foregroundColor(.secondary)
-                        if !pr.author.isEmpty {
-                            Text("by \(pr.author)")
+                        if !pullRequest.author.isEmpty {
+                            Text("by \(pullRequest.author)")
                                 .font(.caption2)
                                 .foregroundColor(.secondary.opacity(0.8))
                         }
                     }
 
                     // Title
-                    Text(pr.title)
+                    Text(pullRequest.title)
                         .font(.system(.body, design: .default))
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -37,27 +39,28 @@ struct PRRowView: View {
                         stateBadge
                         conflictBadge
                         ciBadge
-                        if pr.state != .draft && (pr.ciStatus == .success || pr.ciStatus == .unknown) {
+                        if pullRequest.state != .draft &&
+                            (pullRequest.ciStatus == .success || pullRequest.ciStatus == .unknown) {
                             reviewBadge
                         }
                         Spacer()
-                        if !pr.headSHA.isEmpty {
-                            Text(pr.headSHA)
+                        if !pullRequest.headSHA.isEmpty {
+                            Text(pullRequest.headSHA)
                                 .font(.system(.caption2, design: .monospaced))
                                 .foregroundColor(.secondary.opacity(0.6))
                         }
                     }
 
                     // Expandable failed checks list
-                    if showFailures && !pr.failedChecks.isEmpty {
+                    if showFailures && !pullRequest.failedChecks.isEmpty {
                         VStack(alignment: .leading, spacing: 3) {
-                            ForEach(pr.failedChecks.indices, id: \.self) { i in
-                                let check = pr.failedChecks[i]
-                                Button(action: {
+                            ForEach(pullRequest.failedChecks.indices, id: \.self) { index in
+                                let check = pullRequest.failedChecks[index]
+                                Button {
                                     if let url = check.detailsUrl {
                                         NSWorkspace.shared.open(url)
                                     }
-                                }) {
+                                } label: {
                                     HStack(spacing: 4) {
                                         Image(systemName: "xmark.circle.fill")
                                             .font(.caption2)
@@ -96,13 +99,13 @@ struct PRRowView: View {
     // MARK: - Status Color
 
     private var statusColor: Color {
-        switch pr.state {
+        switch pullRequest.state {
         case .merged: return .purple
         case .closed: return .gray
-        case .draft:  return .gray
+        case .draft: return .gray
         case .open:
-            if pr.isInMergeQueue { return .purple }
-            switch pr.ciStatus {
+            if pullRequest.isInMergeQueue { return .purple }
+            switch pullRequest.ciStatus {
             case .success: return .green
             case .failure: return .red
             case .pending: return .orange
@@ -128,9 +131,9 @@ struct PRRowView: View {
     }
 
     private var stateIcon: String {
-        switch pr.state {
+        switch pullRequest.state {
         case .open:
-            return pr.isInMergeQueue ? "arrow.triangle.merge" : "arrow.triangle.pull"
+            return pullRequest.isInMergeQueue ? "arrow.triangle.merge" : "arrow.triangle.pull"
         case .closed:
             return "xmark.circle"
         case .merged:
@@ -141,10 +144,10 @@ struct PRRowView: View {
     }
 
     private var stateText: String {
-        switch pr.state {
+        switch pullRequest.state {
         case .open:
-            if pr.isInMergeQueue {
-                if let pos = pr.queuePosition {
+            if pullRequest.isInMergeQueue {
+                if let pos = pullRequest.queuePosition {
                     return "Queue #\(pos)"
                 }
                 return "Merge Queue"
@@ -163,7 +166,7 @@ struct PRRowView: View {
 
     @ViewBuilder
     private var reviewBadge: some View {
-        switch pr.reviewDecision {
+        switch pullRequest.reviewDecision {
         case .approved:
             badgePill(icon: "checkmark.circle.fill", text: "Approved", color: .green)
         case .changesRequested:
@@ -179,7 +182,7 @@ struct PRRowView: View {
 
     @ViewBuilder
     private var conflictBadge: some View {
-        if pr.mergeable == .conflicting {
+        if pullRequest.mergeable == .conflicting {
             badgePill(icon: "exclamationmark.triangle.fill", text: "Conflicts", color: .red)
         }
     }
@@ -188,20 +191,20 @@ struct PRRowView: View {
 
     @ViewBuilder
     private var ciBadge: some View {
-        if pr.checksTotal > 0 {
-            Button(action: {
-                if !pr.failedChecks.isEmpty {
+        if pullRequest.checksTotal > 0 {
+            Button {
+                if !pullRequest.failedChecks.isEmpty {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         showFailures.toggle()
                     }
                 }
-            }) {
+            } label: {
                 HStack(spacing: 3) {
                     Image(systemName: ciIcon)
                         .font(.caption2)
                     Text(ciText)
                         .font(.caption2.weight(.medium))
-                    if !pr.failedChecks.isEmpty {
+                    if !pullRequest.failedChecks.isEmpty {
                         Image(systemName: showFailures ? "chevron.up" : "chevron.down")
                             .font(.system(size: 7, weight: .bold))
                     }
@@ -217,7 +220,7 @@ struct PRRowView: View {
     }
 
     private var ciIcon: String {
-        switch pr.ciStatus {
+        switch pullRequest.ciStatus {
         case .success: return "checkmark.circle.fill"
         case .failure: return "xmark.circle.fill"
         case .pending: return "clock.fill"
@@ -226,18 +229,18 @@ struct PRRowView: View {
     }
 
     private var ciText: String {
-        if pr.checksFailed > 0 {
-            return "\(pr.checksFailed) failed"
+        if pullRequest.checksFailed > 0 {
+            return "\(pullRequest.checksFailed) failed"
         }
-        let pending = pr.checksTotal - pr.checksPassed - pr.checksFailed
+        let pending = pullRequest.checksTotal - pullRequest.checksPassed - pullRequest.checksFailed
         if pending > 0 {
-            return "\(pr.checksPassed)/\(pr.checksTotal) checks"
+            return "\(pullRequest.checksPassed)/\(pullRequest.checksTotal) checks"
         }
-        return "\(pr.checksPassed)/\(pr.checksTotal) passed"
+        return "\(pullRequest.checksPassed)/\(pullRequest.checksTotal) passed"
     }
 
     private var ciColor: Color {
-        switch pr.ciStatus {
+        switch pullRequest.ciStatus {
         case .success: return .green
         case .failure: return .red
         case .pending: return .orange

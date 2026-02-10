@@ -11,7 +11,7 @@ final class GitHubService: @unchecked Sendable {
         let candidates = [
             "/opt/homebrew/bin/gh",
             "/usr/local/bin/gh",
-            "/usr/bin/gh",
+            "/usr/bin/gh"
         ]
         self.ghPath = candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
             ?? "gh" // fallback to PATH lookup
@@ -134,34 +134,10 @@ final class GitHubService: @unchecked Sendable {
         let mergeQueueEntry = node["mergeQueueEntry"] as? [String: Any]
         let queuePosition = mergeQueueEntry?["position"] as? Int
 
-        // Review decision
-        let rawReview = node["reviewDecision"] as? String ?? ""
-        let reviewDecision: PullRequest.ReviewDecision
-        switch rawReview {
-        case "APPROVED":          reviewDecision = .approved
-        case "CHANGES_REQUESTED": reviewDecision = .changesRequested
-        case "REVIEW_REQUIRED":   reviewDecision = .reviewRequired
-        default:                  reviewDecision = .none
-        }
-
-        // Mergeable state
-        let rawMergeable = node["mergeable"] as? String ?? ""
-        let mergeable: PullRequest.MergeableState
-        switch rawMergeable {
-        case "MERGEABLE":   mergeable = .mergeable
-        case "CONFLICTING": mergeable = .conflicting
-        default:            mergeable = .unknown
-        }
-
-        let state: PullRequest.PRState
-        switch rawState {
-        case "MERGED":  state = .merged
-        case "CLOSED":  state = .closed
-        default:        state = isDraft ? .draft : .open
-        }
-
-        // Parse CI status from statusCheckRollup
-        let ci = parseCheckStatus(from: node)
+        let reviewDecision = parseReviewDecision(from: node)
+        let mergeable = parseMergeableState(from: node)
+        let state = parsePRState(rawState: rawState, isDraft: isDraft)
+        let checkResult = parseCheckStatus(from: node)
 
         return PullRequest(
             owner: owner,
@@ -170,19 +146,46 @@ final class GitHubService: @unchecked Sendable {
             title: title,
             author: author,
             state: state,
-            ciStatus: ci.status,
+            ciStatus: checkResult.status,
             isInMergeQueue: mergeQueueEntry != nil,
-            checksTotal: ci.total,
-            checksPassed: ci.passed,
-            checksFailed: ci.failed,
+            checksTotal: checkResult.total,
+            checksPassed: checkResult.passed,
+            checksFailed: checkResult.failed,
             url: url,
             headSHA: String(headSHA.prefix(7)),
             lastFetched: Date(),
             reviewDecision: reviewDecision,
             mergeable: mergeable,
             queuePosition: queuePosition,
-            failedChecks: ci.failedChecks
+            failedChecks: checkResult.failedChecks
         )
+    }
+
+    private func parseReviewDecision(from node: [String: Any]) -> PullRequest.ReviewDecision {
+        let raw = node["reviewDecision"] as? String ?? ""
+        switch raw {
+        case "APPROVED": return .approved
+        case "CHANGES_REQUESTED": return .changesRequested
+        case "REVIEW_REQUIRED": return .reviewRequired
+        default: return .none
+        }
+    }
+
+    private func parseMergeableState(from node: [String: Any]) -> PullRequest.MergeableState {
+        let raw = node["mergeable"] as? String ?? ""
+        switch raw {
+        case "MERGEABLE": return .mergeable
+        case "CONFLICTING": return .conflicting
+        default: return .unknown
+        }
+    }
+
+    private func parsePRState(rawState: String, isDraft: Bool) -> PullRequest.PRState {
+        switch rawState {
+        case "MERGED": return .merged
+        case "CLOSED": return .closed
+        default: return isDraft ? .draft : .open
+        }
     }
 
     private struct CIResult {
@@ -194,7 +197,36 @@ final class GitHubService: @unchecked Sendable {
     }
 
     private func parseCheckStatus(from node: [String: Any]) -> CIResult {
-        // Navigate: commits.nodes[0].commit.statusCheckRollup.contexts.nodes
+        guard let rollupData = extractRollupData(from: node) else {
+            return CIResult(status: .unknown, total: 0, passed: 0, failed: 0, failedChecks: [])
+        }
+
+        let counts = tallyCheckContexts(rollupData.contextNodes)
+
+        let ciStatus = resolveOverallStatus(
+            totalCount: rollupData.totalCount,
+            passed: counts.passed,
+            failed: counts.failed,
+            pending: counts.pending,
+            rollup: rollupData.rollup
+        )
+
+        return CIResult(
+            status: ciStatus,
+            total: rollupData.totalCount,
+            passed: counts.passed,
+            failed: counts.failed,
+            failedChecks: counts.failedChecks
+        )
+    }
+
+    private struct RollupData {
+        let rollup: [String: Any]
+        let totalCount: Int
+        let contextNodes: [[String: Any]]
+    }
+
+    private func extractRollupData(from node: [String: Any]) -> RollupData? {
         guard let commits = node["commits"] as? [String: Any],
               let commitNodes = commits["nodes"] as? [[String: Any]],
               let firstCommit = commitNodes.first,
@@ -203,62 +235,78 @@ final class GitHubService: @unchecked Sendable {
               let contexts = rollup["contexts"] as? [String: Any],
               let totalCount = contexts["totalCount"] as? Int,
               let contextNodes = contexts["nodes"] as? [[String: Any]]
-        else {
-            return CIResult(status: .unknown, total: 0, passed: 0, failed: 0, failedChecks: [])
-        }
+        else { return nil }
 
-        var passed = 0, failed = 0, pending = 0
-        var failedChecks: [PullRequest.CheckInfo] = []
+        return RollupData(rollup: rollup, totalCount: totalCount, contextNodes: contextNodes)
+    }
+
+    private struct CheckCounts {
+        var passed: Int
+        var failed: Int
+        var pending: Int
+        var failedChecks: [PullRequest.CheckInfo]
+    }
+
+    private func tallyCheckContexts(_ contextNodes: [[String: Any]]) -> CheckCounts {
+        var counts = CheckCounts(passed: 0, failed: 0, pending: 0, failedChecks: [])
 
         for ctx in contextNodes {
             let status = ctx["status"] as? String ?? ""
             let conclusion = ctx["conclusion"] as? String ?? ""
 
-            if status.isEmpty && conclusion.isEmpty {
-                // StatusContext nodes (not CheckRun) show up as empty dicts in our query;
-                // count them based on the rollup state if needed, or skip
-                continue
-            }
+            // StatusContext nodes (not CheckRun) show up as empty — skip them
+            if status.isEmpty && conclusion.isEmpty { continue }
 
             if status == "COMPLETED" {
-                switch conclusion {
-                case "SUCCESS", "SKIPPED", "NEUTRAL":
-                    passed += 1
-                default:
-                    failed += 1
-                    // Collect failed check info
-                    if let name = ctx["name"] as? String {
-                        let detailsUrl = (ctx["detailsUrl"] as? String).flatMap { URL(string: $0) }
-                        failedChecks.append(PullRequest.CheckInfo(name: name, detailsUrl: detailsUrl))
-                    }
-                }
+                classifyCompletedCheck(ctx, conclusion: conclusion, counts: &counts)
             } else {
-                pending += 1
+                counts.pending += 1
             }
         }
 
-        // Use totalCount from the API for accuracy (contextNodes may be partial)
-        let ciStatus: PullRequest.CIStatus
-        if totalCount == 0 {
-            ciStatus = .unknown
-        } else if failed > 0 {
-            ciStatus = .failure
-        } else if pending > 0 {
-            ciStatus = .pending
-        } else if passed == 0 {
-            // All nodes were empty StatusContexts — check the rollup state
+        return counts
+    }
+
+    private func classifyCompletedCheck(
+        _ ctx: [String: Any],
+        conclusion: String,
+        counts: inout CheckCounts
+    ) {
+        switch conclusion {
+        case "SUCCESS", "SKIPPED", "NEUTRAL":
+            counts.passed += 1
+        default:
+            counts.failed += 1
+            if let name = ctx["name"] as? String {
+                let detailsUrl = (ctx["detailsUrl"] as? String).flatMap { URL(string: $0) }
+                counts.failedChecks.append(PullRequest.CheckInfo(name: name, detailsUrl: detailsUrl))
+            }
+        }
+    }
+
+    private func resolveOverallStatus(
+        totalCount: Int,
+        passed: Int,
+        failed: Int,
+        pending: Int,
+        rollup: [String: Any]
+    ) -> PullRequest.CIStatus {
+        if totalCount == 0 { return .unknown }
+        if failed > 0 { return .failure }
+        if pending > 0 { return .pending }
+
+        // All nodes were empty StatusContexts — fall back to rollup state
+        if passed == 0 {
             let rollupState = rollup["state"] as? String ?? ""
             switch rollupState {
-            case "SUCCESS":  ciStatus = .success
-            case "FAILURE", "ERROR":  ciStatus = .failure
-            case "PENDING":  ciStatus = .pending
-            default:         ciStatus = .unknown
+            case "SUCCESS": return .success
+            case "FAILURE", "ERROR": return .failure
+            case "PENDING": return .pending
+            default: return .unknown
             }
-        } else {
-            ciStatus = .success
         }
 
-        return CIResult(status: ciStatus, total: totalCount, passed: passed, failed: failed, failedChecks: failedChecks)
+        return .success
     }
 
     // MARK: - gh CLI Helpers

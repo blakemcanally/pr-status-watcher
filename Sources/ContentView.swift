@@ -9,19 +9,19 @@ struct ContentView: View {
     private var groupedPRs: [(repo: String, prs: [PullRequest])] {
         let dict = Dictionary(grouping: manager.pullRequests, by: \.repoFullName)
         return dict.keys.sorted().map { key in
-            (repo: key, prs: dict[key]!.sorted {
-                let p0 = statePriority($0)
-                let p1 = statePriority($1)
-                if p0 != p1 { return p0 < p1 }
+            (repo: key, prs: (dict[key] ?? []).sorted {
+                let lhsPriority = statePriority($0)
+                let rhsPriority = statePriority($1)
+                if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
                 return $0.number < $1.number
             })
         }
     }
 
     /// Sort priority: Open = 0, Draft = 1, Queued = 2.
-    private func statePriority(_ pr: PullRequest) -> Int {
-        if pr.isInMergeQueue { return 2 }
-        switch pr.state {
+    private func statePriority(_ pullRequest: PullRequest) -> Int {
+        if pullRequest.isInMergeQueue { return 2 }
+        switch pullRequest.state {
         case .open:   return 0
         case .draft:  return 1
         case .merged: return 3
@@ -54,7 +54,9 @@ struct ContentView: View {
                 ProgressView()
                     .controlSize(.small)
             }
-            Button(action: { Task { await manager.refreshAll() } }) {
+            Button {
+                Task { await manager.refreshAll() }
+            } label: {
                 Image(systemName: "arrow.clockwise")
                     .font(.body)
             }
@@ -92,82 +94,22 @@ struct ContentView: View {
         let isCollapsed = collapsedRepos.contains(repo)
 
         return VStack(spacing: 0) {
-            // Section header
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    if isCollapsed {
-                        collapsedRepos.remove(repo)
-                    } else {
-                        collapsedRepos.insert(repo)
-                    }
-                }
-            }) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.right")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundColor(.secondary)
-                        .rotationEffect(.degrees(isCollapsed ? 0 : 90))
-
-                    // Show just the repo name portion
-                    let parts = repo.split(separator: "/")
-                    if parts.count == 2 {
-                        Text(String(parts[0]))
-                            .font(.caption)
-                            .foregroundColor(.secondary.opacity(0.7))
-                        Text("/")
-                            .font(.caption)
-                            .foregroundColor(.secondary.opacity(0.4))
-                        Text(String(parts[1]))
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.secondary)
-                    } else {
-                        Text(repo)
-                            .font(.caption.weight(.semibold))
-                            .foregroundColor(.secondary)
-                    }
-
-                    Text("\(prs.count)")
-                        .font(.caption2.weight(.medium))
-                        .foregroundColor(.secondary.opacity(0.7))
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 1)
-                        .background(Color.secondary.opacity(0.12))
-                        .cornerRadius(4)
-
-                    Spacer()
-
-                    // Summary CI dots when collapsed
-                    if isCollapsed {
-                        HStack(spacing: 3) {
-                            ForEach(prs) { pr in
-                                Circle()
-                                    .fill(ciDotColor(for: pr))
-                                    .frame(width: 6, height: 6)
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .background(Color.secondary.opacity(0.05))
+            repoHeader(repo: repo, prs: prs, isCollapsed: isCollapsed)
 
             // PR rows
             if !isCollapsed {
-                ForEach(prs) { pr in
-                    PRRowView(pr: pr)
+                ForEach(prs) { pullRequest in
+                    PRRowView(pullRequest: pullRequest)
                         .contextMenu {
                             Button("Open in Browser") {
-                                NSWorkspace.shared.open(pr.url)
+                                NSWorkspace.shared.open(pullRequest.url)
                             }
                             Button("Copy URL") {
                                 NSPasteboard.general.clearContents()
-                                NSPasteboard.general.setString(pr.url.absoluteString, forType: .string)
+                                NSPasteboard.general.setString(pullRequest.url.absoluteString, forType: .string)
                             }
                         }
-                    if pr.id != prs.last?.id {
+                    if pullRequest.id != prs.last?.id {
                         Divider().padding(.leading, 36)
                     }
                 }
@@ -178,8 +120,74 @@ struct ContentView: View {
         }
     }
 
-    private func ciDotColor(for pr: PullRequest) -> Color {
-        switch pr.ciStatus {
+    private func repoHeader(repo: String, prs: [PullRequest], isCollapsed: Bool) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                if isCollapsed {
+                    collapsedRepos.remove(repo)
+                } else {
+                    collapsedRepos.insert(repo)
+                }
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundColor(.secondary)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+
+                repoNameLabel(repo)
+
+                Text("\(prs.count)")
+                    .font(.caption2.weight(.medium))
+                    .foregroundColor(.secondary.opacity(0.7))
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 1)
+                    .background(Color.secondary.opacity(0.12))
+                    .cornerRadius(4)
+
+                Spacer()
+
+                if isCollapsed {
+                    HStack(spacing: 3) {
+                        ForEach(prs) { pullRequest in
+                            Circle()
+                                .fill(ciDotColor(for: pullRequest))
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Color.secondary.opacity(0.05))
+    }
+
+    @ViewBuilder
+    private func repoNameLabel(_ repo: String) -> some View {
+        let parts = repo.split(separator: "/")
+        if parts.count == 2 {
+            Text(String(parts[0]))
+                .font(.caption)
+                .foregroundColor(.secondary.opacity(0.7))
+            Text("/")
+                .font(.caption)
+                .foregroundColor(.secondary.opacity(0.4))
+            Text(String(parts[1]))
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.secondary)
+        } else {
+            Text(repo)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.secondary)
+        }
+    }
+
+    private func ciDotColor(for pullRequest: PullRequest) -> Color {
+        switch pullRequest.ciStatus {
         case .success: return .green
         case .failure: return .red
         case .pending: return .orange
