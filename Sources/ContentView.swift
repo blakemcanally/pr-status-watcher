@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject var manager: PRManager
+    @Environment(\.openWindow) private var openWindow
     @State private var collapsedRepos: Set<String> = []
 
     /// PRs grouped by repo, sorted by repo name. Within each repo, sorted by state: Open, Draft, Queued.
@@ -268,7 +269,7 @@ struct ContentView: View {
     // MARK: - Actions
 
     private func openSettings() {
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        openWindow(id: "settings")
         NSApp.activate(ignoringOtherApps: true)
     }
 }

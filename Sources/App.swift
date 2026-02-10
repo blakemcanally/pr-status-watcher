@@ -28,9 +28,11 @@ struct PRStatusWatcherApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        Settings {
+        Window("Settings", id: "settings") {
             SettingsView()
                 .environmentObject(manager)
         }
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
     }
 }
