@@ -38,6 +38,7 @@ struct SettingsView: View {
                     .font(.headline)
 
                 Toggle("Launch at login", isOn: $launchAtLogin)
+                    .accessibilityHint("Automatically start the app when you log in")
                     .onChange(of: launchAtLogin) { newValue in
                         do {
                             if newValue {
@@ -75,6 +76,7 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.radioGroup)
+                .accessibilityLabel("Refresh interval")
             }
 
             Spacer()

@@ -29,6 +29,7 @@ struct AuthStatusView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+            .accessibilityLabel("Signed in as \(username)")
         case .detailed:
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
@@ -39,6 +40,7 @@ struct AuthStatusView: View {
             .padding(10)
             .background(Color.green.opacity(0.08))
             .cornerRadius(8)
+            .accessibilityLabel("Signed in as \(username)")
         }
     }
 
@@ -54,6 +56,7 @@ struct AuthStatusView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
+            .accessibilityLabel("Not authenticated")
         case .detailed:
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
@@ -76,6 +79,7 @@ struct AuthStatusView: View {
             .padding(10)
             .background(Color.orange.opacity(0.08))
             .cornerRadius(8)
+            .accessibilityLabel("Not authenticated. Run gh auth login in terminal.")
         }
     }
 }
