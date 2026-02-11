@@ -83,6 +83,7 @@ struct ContentView: View {
             .buttonStyle(.borderless)
             .disabled(manager.isRefreshing)
             .help("Refresh all PRs")
+            .keyboardShortcut("r", modifiers: .command)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -263,12 +264,14 @@ struct ContentView: View {
             }
             .buttonStyle(.borderless)
             .help("Settings")
+            .keyboardShortcut(",", modifiers: .command)
 
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
             }
             .buttonStyle(.borderless)
             .font(.caption)
+            .keyboardShortcut("q", modifiers: .command)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
