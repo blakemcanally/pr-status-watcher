@@ -215,7 +215,7 @@ final class PRManager: ObservableObject {
 
     // MARK: - Notifications
 
-    private var notificationsAvailable: Bool {
+    var notificationsAvailable: Bool {
         Bundle.main.bundleIdentifier != nil
     }
 
