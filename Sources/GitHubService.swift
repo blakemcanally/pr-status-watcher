@@ -355,12 +355,17 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
 
     // MARK: - gh CLI Helpers
 
+    private static let processTimeout: TimeInterval = 30
+
     /// Run a `gh` subcommand synchronously and capture output.
     ///
     /// Drains stdout and stderr on background threads to avoid a pipe-buffer
     /// deadlock: if the subprocess writes more than ~64 KB to a pipe before the
     /// parent reads it, the write blocks — and if the parent is stuck in
     /// `waitUntilExit()`, both sides deadlock.
+    ///
+    /// The process is terminated if it hasn't exited within `processTimeout`
+    /// seconds, and `GHError.timeout` is thrown.
     private func run(_ arguments: [String]) throws -> (stdout: String, stderr: String, exitCode: Int32) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: ghPath)
@@ -393,7 +398,24 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
             group.leave()
         }
 
-        process.waitUntilExit()
+        // Wait for process with timeout instead of blocking indefinitely
+        let semaphore = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in
+            semaphore.signal()
+        }
+
+        let result = semaphore.wait(timeout: .now() + Self.processTimeout)
+        if result == .timedOut {
+            logger.error("run: gh process timed out after \(Self.processTimeout)s, terminating")
+            process.terminate()
+            // Give it a moment to clean up, then force-kill if needed
+            DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+                if process.isRunning { process.terminate() }
+            }
+            throw GHError.timeout
+        }
+
+        // Process exited normally — wait for pipes to finish draining
         group.wait()
 
         let stdout = String(data: outData, encoding: .utf8) ?? ""
@@ -408,6 +430,7 @@ enum GHError: LocalizedError {
     case cliNotFound
     case apiError(String)
     case invalidJSON
+    case timeout
 
     var errorDescription: String? {
         switch self {
@@ -418,6 +441,8 @@ enum GHError: LocalizedError {
             return trimmed.isEmpty ? "GitHub API error" : trimmed
         case .invalidJSON:
             return "Invalid response from GitHub API"
+        case .timeout:
+            return "GitHub CLI timed out — check your network connection"
         }
     }
 }

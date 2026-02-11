@@ -215,7 +215,12 @@ final class PRManager: ObservableObject {
         case .failure(let error):
             logger.error("refreshAll: review PRs fetch failed: \(error.localizedDescription, privacy: .public)")
             // Keep existing reviewPRs in place — don't blank the UI
-            break
+            let reviewError = "Reviews: \(error.localizedDescription)"
+            if let existing = lastError {
+                lastError = "\(existing) | \(reviewError)"
+            } else {
+                lastError = reviewError
+            }
         }
 
         hasCompletedInitialLoad = true
