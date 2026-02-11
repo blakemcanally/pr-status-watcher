@@ -255,6 +255,13 @@ struct ContentView: View {
                 .font(.caption2)
                 .foregroundColor(.secondary)
 
+            if !manager.notificationsAvailable {
+                Image(systemName: "bell.slash")
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+                    .help("Notifications unavailable — build as .app to enable (see README)")
+            }
+
             Spacer()
 
             Button(action: openSettings) {
