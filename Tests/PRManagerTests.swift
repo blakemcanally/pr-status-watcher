@@ -144,6 +144,81 @@ import Foundation
         #expect(manager.reviewPRs.count == 1)
     }
 
+    // MARK: - Review PR Error Surfacing
+
+    @Test func reviewPRFailureSetsLastError() async {
+        mockService.myPRsResult = .success([])
+        mockService.reviewPRsResult = .failure(
+            NSError(domain: "test", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "API rate limit exceeded",
+            ])
+        )
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.lastError?.contains("Reviews:") == true)
+        #expect(manager.lastError?.contains("API rate limit exceeded") == true)
+    }
+
+    @Test func bothFailuresCombinesErrors() async throws {
+        mockService.myPRsResult = .failure(
+            NSError(domain: "test", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Network timeout",
+            ])
+        )
+        mockService.reviewPRsResult = .failure(
+            NSError(domain: "test", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "API rate limit exceeded",
+            ])
+        )
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        let error = try #require(manager.lastError)
+        #expect(error.contains("Network timeout"))
+        #expect(error.contains("Reviews:"))
+        #expect(error.contains("API rate limit exceeded"))
+        #expect(error.contains("|"))
+    }
+
+    @Test func reviewSuccessClearsReviewError() async {
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+
+        // First refresh: review PRs fail
+        mockService.myPRsResult = .success([])
+        mockService.reviewPRsResult = .failure(
+            NSError(domain: "test", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "API error",
+            ])
+        )
+        await manager.refreshAll()
+        #expect(manager.lastError != nil)
+
+        // Second refresh: both succeed → error should clear
+        mockService.myPRsResult = .success([])
+        mockService.reviewPRsResult = .success([])
+        await manager.refreshAll()
+        #expect(manager.lastError == nil)
+    }
+
+    // MARK: - Timeout Error Propagation
+
+    @Test func timeoutErrorSurfacedToUser() async {
+        mockService.myPRsResult = .failure(GHError.timeout)
+        mockService.reviewPRsResult = .success([])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.lastError?.contains("timed out") == true)
+    }
+
     // MARK: - Settings Persistence
 
     @Test func filterSettingsDidSetSavesToStore() {
