@@ -14,6 +14,11 @@ final class PRManager: ObservableObject {
 
     let service = GitHubService()
     private static let pollingKey = "polling_interval"
+    private static let collapsedReposKey = "collapsed_repos"
+
+    @Published var collapsedRepos: Set<String> = [] {
+        didSet { UserDefaults.standard.set(Array(collapsedRepos), forKey: Self.collapsedReposKey) }
+    }
 
     @Published var refreshInterval: Int {
         didSet { UserDefaults.standard.set(refreshInterval, forKey: Self.pollingKey) }
@@ -36,6 +41,7 @@ final class PRManager: ObservableObject {
     init() {
         let saved = UserDefaults.standard.integer(forKey: Self.pollingKey)
         self.refreshInterval = saved > 0 ? saved : 60
+        self.collapsedRepos = Set(UserDefaults.standard.stringArray(forKey: Self.collapsedReposKey) ?? [])
 
         requestNotificationPermission()
 

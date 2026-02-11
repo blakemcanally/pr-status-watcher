@@ -9,7 +9,6 @@ struct ContentView: View {
     @EnvironmentObject var manager: PRManager
     @Environment(\.openWindow) private var openWindow
     @State private var selectedTab: PRTab = .myPRs
-    @State private var collapsedRepos: Set<String> = []
 
     /// PRs for the currently selected tab.
     private var activePRs: [PullRequest] {
@@ -111,7 +110,7 @@ struct ContentView: View {
     // MARK: - Repo Section
 
     private func repoSection(repo: String, prs: [PullRequest]) -> some View {
-        let isCollapsed = collapsedRepos.contains(repo)
+        let isCollapsed = manager.collapsedRepos.contains(repo)
 
         return VStack(spacing: 0) {
             repoHeader(repo: repo, prs: prs, isCollapsed: isCollapsed)
@@ -148,9 +147,13 @@ struct ContentView: View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
                 if isCollapsed {
-                    collapsedRepos.remove(repo)
+                    var updated = manager.collapsedRepos
+                    updated.remove(repo)
+                    manager.collapsedRepos = updated
                 } else {
-                    collapsedRepos.insert(repo)
+                    var updated = manager.collapsedRepos
+                    updated.insert(repo)
+                    manager.collapsedRepos = updated
                 }
             }
         } label: {
