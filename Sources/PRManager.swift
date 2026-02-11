@@ -30,6 +30,7 @@ final class PRManager: ObservableObject {
     private var previousCIStates: [String: PullRequest.CIStatus] = [:]
     private var previousPRIds: Set<String> = []
     private var isFirstLoad = true
+    private var pollingTask: Task<Void, Never>?
 
     // MARK: - Init
 
@@ -211,12 +212,17 @@ final class PRManager: ObservableObject {
     // MARK: - Polling
 
     private func startPolling() {
-        Task {
+        pollingTask?.cancel()
+        pollingTask = Task {
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: UInt64(refreshInterval) * 1_000_000_000)
                 await refreshAll()
             }
         }
+    }
+
+    deinit {
+        pollingTask?.cancel()
     }
 
     // MARK: - Notifications
