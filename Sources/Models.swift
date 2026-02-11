@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - Pull Request Model
 
-struct PullRequest: Identifiable {
+struct PullRequest: Identifiable, Codable {
     var id: String { "\(owner)/\(repo)#\(number)" }
 
     let owner: String
@@ -70,14 +70,14 @@ struct PullRequest: Identifiable {
 
     // MARK: State & CI Enums
 
-    enum PRState: String {
+    enum PRState: String, Codable {
         case open
         case closed
         case merged
         case draft
     }
 
-    enum CIStatus: String {
+    enum CIStatus: String, Codable {
         case success
         case failure
         case pending
@@ -95,14 +95,14 @@ struct PullRequest: Identifiable {
 
     // MARK: Review & Merge Enums
 
-    enum ReviewDecision: String {
+    enum ReviewDecision: String, Codable {
         case approved
         case changesRequested
         case reviewRequired
         case none
     }
 
-    enum MergeableState: String {
+    enum MergeableState: String, Codable {
         case mergeable
         case conflicting
         case unknown
@@ -110,7 +110,7 @@ struct PullRequest: Identifiable {
 
     // MARK: Check Info
 
-    struct CheckInfo {
+    struct CheckInfo: Codable {
         let name: String
         let detailsUrl: URL?
     }
