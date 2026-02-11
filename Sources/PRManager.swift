@@ -34,6 +34,11 @@ final class PRManager: ObservableObject {
         PRStatusSummary.refreshIntervalLabel(for: refreshInterval)
     }
 
+    /// The estimated date of the next scheduled refresh, or nil if not polling.
+    var nextRefreshDate: Date? {
+        scheduler.nextRefreshDate
+    }
+
     /// True until the first successful fetch completes (distinguishes "loading" from "genuinely empty").
     @Published var hasCompletedInitialLoad = false
 
@@ -95,7 +100,7 @@ final class PRManager: ObservableObject {
     }
 
     var statusBarSummary: String {
-        PRStatusSummary.statusBarSummary(for: pullRequests)
+        PRStatusSummary.statusBarSummary(for: pullRequests, reviewPRs: reviewPRs)
     }
 
     /// Menu bar image with a red badge dot when CI is failing.

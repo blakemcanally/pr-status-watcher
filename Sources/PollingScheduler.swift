@@ -8,6 +8,9 @@ import Foundation
 final class PollingScheduler {
     private var task: Task<Void, Never>?
 
+    /// The estimated date of the next scheduled refresh, or nil if not polling.
+    private(set) var nextRefreshDate: Date?
+
     /// Whether a polling task is currently active.
     var isRunning: Bool {
         task != nil && !(task?.isCancelled ?? true)
@@ -18,6 +21,7 @@ final class PollingScheduler {
         stop()
         task = Task {
             while !Task.isCancelled {
+                nextRefreshDate = Date.now.addingTimeInterval(TimeInterval(interval))
                 do {
                     try await Task.sleep(nanoseconds: UInt64(interval) * 1_000_000_000)
                 } catch {
@@ -32,6 +36,7 @@ final class PollingScheduler {
     func stop() {
         task?.cancel()
         task = nil
+        nextRefreshDate = nil
     }
 
     deinit {

@@ -309,9 +309,12 @@ struct ContentView: View {
                     .help(error)
             }
 
-            Text("Refreshes every \(manager.refreshIntervalLabel)")
-                .font(.caption2)
-                .foregroundColor(.secondary)
+            TimelineView(.periodic(from: .now, by: 10)) { context in
+                Text(refreshFooterLabel(at: context.date))
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+            .help("Auto-refreshes every \(manager.refreshIntervalLabel)")
 
             if !manager.notificationsAvailable {
                 Image(systemName: "bell.slash")
@@ -341,6 +344,20 @@ struct ContentView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
+    }
+
+    // MARK: - Helpers
+
+    /// Footer label showing a coarse countdown to the next refresh, with fallbacks.
+    private func refreshFooterLabel(at date: Date) -> String {
+        if let next = manager.nextRefreshDate,
+           let label = PRStatusSummary.countdownLabel(until: next, now: date) {
+            return "Refreshes in \(label)"
+        }
+        if manager.isRefreshing {
+            return "Refreshing…"
+        }
+        return "Refreshes every \(manager.refreshIntervalLabel)"
     }
 
     // MARK: - Actions

@@ -1,4 +1,5 @@
 import Testing
+import Foundation
 @testable import PRStatusWatcher
 
 @Suite struct PRStatusSummaryTests {
@@ -93,36 +94,39 @@ import Testing
 
     // MARK: - statusBarSummary
 
-    @Test func statusBarSummaryEmptyReturnsEmpty() {
-        #expect(PRStatusSummary.statusBarSummary(for: []) == "")
+    @Test func statusBarSummaryBothEmptyReturnsEmpty() {
+        #expect(PRStatusSummary.statusBarSummary(for: [], reviewPRs: []) == "")
     }
 
-    @Test func statusBarSummarySingleOpen() {
-        let prs = [PullRequest.fixture(state: .open)]
-        #expect(PRStatusSummary.statusBarSummary(for: prs) == "1")
-    }
-
-    @Test func statusBarSummaryAllThreeCategories() {
-        let prs = [
-            PullRequest.fixture(number: 1, state: .draft),
-            PullRequest.fixture(number: 2, state: .open),
-            PullRequest.fixture(number: 3, state: .open),
-            PullRequest.fixture(number: 4, state: .open, isInMergeQueue: true),
-        ]
-        #expect(PRStatusSummary.statusBarSummary(for: prs) == "1·2·1")
-    }
-
-    @Test func statusBarSummaryOmitsZeroCategories() {
-        let prs = [
+    @Test func statusBarSummaryMyPRsOnlyShowsBothCounts() {
+        let myPRs = [
             PullRequest.fixture(number: 1, state: .open),
-            PullRequest.fixture(number: 2, state: .open),
+            PullRequest.fixture(number: 2, state: .draft),
+            PullRequest.fixture(number: 3, state: .open),
         ]
-        #expect(PRStatusSummary.statusBarSummary(for: prs) == "2")
+        #expect(PRStatusSummary.statusBarSummary(for: myPRs, reviewPRs: []) == "3 | 0")
     }
 
-    @Test func statusBarSummaryDraftOnly() {
-        let prs = [PullRequest.fixture(state: .draft)]
-        #expect(PRStatusSummary.statusBarSummary(for: prs) == "1")
+    @Test func statusBarSummaryReviewsOnlyShowsBothCounts() {
+        let reviews = [
+            PullRequest.fixture(number: 10, state: .open),
+            PullRequest.fixture(number: 11, state: .open),
+        ]
+        #expect(PRStatusSummary.statusBarSummary(for: [], reviewPRs: reviews) == "0 | 2")
+    }
+
+    @Test func statusBarSummaryBothTabsPopulated() {
+        let myPRs = [
+            PullRequest.fixture(number: 1, state: .open),
+            PullRequest.fixture(number: 2, state: .draft),
+            PullRequest.fixture(number: 3, state: .open, isInMergeQueue: true),
+            PullRequest.fixture(number: 4, state: .open),
+        ]
+        let reviews = [
+            PullRequest.fixture(number: 10, state: .open),
+            PullRequest.fixture(number: 11, state: .open),
+        ]
+        #expect(PRStatusSummary.statusBarSummary(for: myPRs, reviewPRs: reviews) == "4 | 2")
     }
 
     // MARK: - refreshIntervalLabel
@@ -137,5 +141,49 @@ import Testing
     ])
     func refreshIntervalLabel(seconds: Int, expected: String) {
         #expect(PRStatusSummary.refreshIntervalLabel(for: seconds) == expected)
+    }
+
+    // MARK: - countdownLabel
+
+    @Test func countdownLabelNilWhenPast() {
+        let now = Date.now
+        let target = now.addingTimeInterval(-5)
+        #expect(PRStatusSummary.countdownLabel(until: target, now: now) == nil)
+    }
+
+    @Test func countdownLabelNilWhenUnderTenSeconds() {
+        let now = Date.now
+        #expect(PRStatusSummary.countdownLabel(until: now.addingTimeInterval(0), now: now) == nil)
+        #expect(PRStatusSummary.countdownLabel(until: now.addingTimeInterval(5), now: now) == nil)
+        #expect(PRStatusSummary.countdownLabel(until: now.addingTimeInterval(9), now: now) == nil)
+    }
+
+    @Test(arguments: [
+        (10, "~10s"),
+        (15, "~10s"),
+        (19, "~10s"),
+        (20, "~20s"),
+        (35, "~30s"),
+        (50, "~50s"),
+        (59, "~50s"),
+    ])
+    func countdownLabelSeconds(remaining: Int, expected: String) {
+        let now = Date.now
+        let target = now.addingTimeInterval(TimeInterval(remaining))
+        #expect(PRStatusSummary.countdownLabel(until: target, now: now) == expected)
+    }
+
+    @Test(arguments: [
+        (60, "~1 min"),
+        (89, "~1 min"),
+        (119, "~1 min"),
+        (120, "~2 min"),
+        (179, "~2 min"),
+        (300, "~5 min"),
+    ])
+    func countdownLabelMinutes(remaining: Int, expected: String) {
+        let now = Date.now
+        let target = now.addingTimeInterval(TimeInterval(remaining))
+        #expect(PRStatusSummary.countdownLabel(until: target, now: now) == expected)
     }
 }
