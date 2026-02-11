@@ -11,7 +11,7 @@ struct PRRowView: View {
             HStack(spacing: 10) {
                 // Status dot
                 Circle()
-                    .fill(statusColor)
+                    .fill(pullRequest.statusColor)
                     .frame(width: 10, height: 10)
 
                 VStack(alignment: .leading, spacing: 3) {
@@ -96,14 +96,10 @@ struct PRRowView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Status Color
-
-    private var statusColor: Color { pullRequest.statusColor }
-
     // MARK: - State Badge
 
     private var stateBadge: some View {
-        badgePill(icon: stateIcon, text: stateText, color: statusColor)
+        badgePill(icon: stateIcon, text: stateText, color: pullRequest.statusColor)
     }
 
     private var stateIcon: String {
