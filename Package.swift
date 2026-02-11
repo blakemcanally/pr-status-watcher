@@ -14,6 +14,11 @@ let package = Package(
             plugins: [
                 .plugin(name: "SwiftLintBuildToolPlugin", package: "SwiftLintPlugins"),
             ]
+        ),
+        .testTarget(
+            name: "PRStatusWatcherTests",
+            dependencies: ["PRStatusWatcher"],
+            path: "Tests"
         )
     ]
 )

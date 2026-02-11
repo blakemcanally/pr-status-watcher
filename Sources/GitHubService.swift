@@ -120,7 +120,7 @@ final class GitHubService: @unchecked Sendable {
 
     // MARK: - GraphQL Response Parsing
 
-    private func parsePRNode(_ node: [String: Any]) -> PullRequest? {
+    func parsePRNode(_ node: [String: Any]) -> PullRequest? {
         guard let number = node["number"] as? Int,
               let title = node["title"] as? String,
               let urlString = node["url"] as? String,
@@ -174,7 +174,7 @@ final class GitHubService: @unchecked Sendable {
         )
     }
 
-    private func parseReviewDecision(from node: [String: Any]) -> PullRequest.ReviewDecision {
+    func parseReviewDecision(from node: [String: Any]) -> PullRequest.ReviewDecision {
         let raw = node["reviewDecision"] as? String ?? ""
         switch raw {
         case "APPROVED": return .approved
@@ -184,7 +184,7 @@ final class GitHubService: @unchecked Sendable {
         }
     }
 
-    private func parseMergeableState(from node: [String: Any]) -> PullRequest.MergeableState {
+    func parseMergeableState(from node: [String: Any]) -> PullRequest.MergeableState {
         let raw = node["mergeable"] as? String ?? ""
         switch raw {
         case "MERGEABLE": return .mergeable
@@ -193,7 +193,7 @@ final class GitHubService: @unchecked Sendable {
         }
     }
 
-    private func parsePRState(rawState: String, isDraft: Bool) -> PullRequest.PRState {
+    func parsePRState(rawState: String, isDraft: Bool) -> PullRequest.PRState {
         switch rawState {
         case "MERGED": return .merged
         case "CLOSED": return .closed
@@ -201,7 +201,7 @@ final class GitHubService: @unchecked Sendable {
         }
     }
 
-    private struct CIResult {
+    struct CIResult {
         let status: PullRequest.CIStatus
         let total: Int
         let passed: Int
@@ -209,7 +209,7 @@ final class GitHubService: @unchecked Sendable {
         let failedChecks: [PullRequest.CheckInfo]
     }
 
-    private func parseCheckStatus(from node: [String: Any]) -> CIResult {
+    func parseCheckStatus(from node: [String: Any]) -> CIResult {
         guard let rollupData = extractRollupData(from: node) else {
             return CIResult(status: .unknown, total: 0, passed: 0, failed: 0, failedChecks: [])
         }
@@ -233,13 +233,13 @@ final class GitHubService: @unchecked Sendable {
         )
     }
 
-    private struct RollupData {
+    struct RollupData {
         let rollup: [String: Any]
         let totalCount: Int
         let contextNodes: [[String: Any]]
     }
 
-    private func extractRollupData(from node: [String: Any]) -> RollupData? {
+    func extractRollupData(from node: [String: Any]) -> RollupData? {
         guard let commits = node["commits"] as? [String: Any],
               let commitNodes = commits["nodes"] as? [[String: Any]],
               let firstCommit = commitNodes.first,
@@ -253,14 +253,14 @@ final class GitHubService: @unchecked Sendable {
         return RollupData(rollup: rollup, totalCount: totalCount, contextNodes: contextNodes)
     }
 
-    private struct CheckCounts {
+    struct CheckCounts {
         var passed: Int
         var failed: Int
         var pending: Int
         var failedChecks: [PullRequest.CheckInfo]
     }
 
-    private func tallyCheckContexts(_ contextNodes: [[String: Any]]) -> CheckCounts {
+    func tallyCheckContexts(_ contextNodes: [[String: Any]]) -> CheckCounts {
         var counts = CheckCounts(passed: 0, failed: 0, pending: 0, failedChecks: [])
 
         for ctx in contextNodes {
@@ -297,7 +297,7 @@ final class GitHubService: @unchecked Sendable {
         return counts
     }
 
-    private func classifyCompletedCheck(
+    func classifyCompletedCheck(
         _ ctx: [String: Any],
         conclusion: String,
         counts: inout CheckCounts
@@ -314,7 +314,7 @@ final class GitHubService: @unchecked Sendable {
         }
     }
 
-    private func resolveOverallStatus(
+    func resolveOverallStatus(
         totalCount: Int,
         passed: Int,
         failed: Int,
