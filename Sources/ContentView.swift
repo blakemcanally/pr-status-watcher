@@ -49,7 +49,10 @@ struct ContentView: View {
             Divider()
             footer
         }
-        .frame(width: 460, height: 520)
+        .frame(
+            minWidth: 400, idealWidth: 460, maxWidth: 560,
+            minHeight: 400, idealHeight: 520, maxHeight: 700
+        )
     }
 
     // MARK: - Header
