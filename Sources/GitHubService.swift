@@ -37,12 +37,23 @@ final class GitHubService: @unchecked Sendable {
         return nil
     }
 
-    /// Fetch all open PRs authored by the given user in a single GraphQL call.
-    /// Returns fully populated PullRequest objects including CI status.
+    /// Fetch all open PRs authored by the given user.
     func fetchAllMyOpenPRs(username: String) throws -> [PullRequest] {
+        try fetchPRs(searchQuery: "author:\(username) type:pr state:open")
+    }
+
+    /// Fetch open PRs where the given user has a pending review request.
+    func fetchReviewRequestedPRs(username: String) throws -> [PullRequest] {
+        try fetchPRs(searchQuery: "review-requested:\(username) type:pr state:open")
+    }
+
+    // MARK: - Shared Fetch
+
+    /// Fetch PRs matching an arbitrary GitHub search query string.
+    private func fetchPRs(searchQuery: String) throws -> [PullRequest] {
         let query = """
         query {
-          search(query: "author:\(username) type:pr state:open", type: ISSUE, first: 100) {
+          search(query: "\(searchQuery)", type: ISSUE, first: 100) {
             nodes {
               ... on PullRequest {
                 number
@@ -55,7 +66,9 @@ final class GitHubService: @unchecked Sendable {
                 reviewDecision
                 mergeable
                 mergeQueueEntry { position }
+                reviews(states: APPROVED, first: 0) { totalCount }
                 headRefOid
+                headRefName
                 commits(last: 1) {
                   nodes {
                     commit {
@@ -123,8 +136,11 @@ final class GitHubService: @unchecked Sendable {
         let isDraft = node["isDraft"] as? Bool ?? false
         let rawState = node["state"] as? String ?? "OPEN"
         let headSHA = node["headRefOid"] as? String ?? ""
+        let headRefName = node["headRefName"] as? String ?? ""
         let mergeQueueEntry = node["mergeQueueEntry"] as? [String: Any]
         let queuePosition = mergeQueueEntry?["position"] as? Int
+        let reviewsDict = node["reviews"] as? [String: Any]
+        let approvalCount = reviewsDict?["totalCount"] as? Int ?? 0
 
         let reviewDecision = parseReviewDecision(from: node)
         let mergeable = parseMergeableState(from: node)
@@ -145,10 +161,12 @@ final class GitHubService: @unchecked Sendable {
             checksFailed: checkResult.failed,
             url: url,
             headSHA: String(headSHA.prefix(7)),
+            headRefName: headRefName,
             lastFetched: Date(),
             reviewDecision: reviewDecision,
             mergeable: mergeable,
             queuePosition: queuePosition,
+            approvalCount: approvalCount,
             failedChecks: checkResult.failedChecks
         )
     }

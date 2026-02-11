@@ -1,7 +1,9 @@
+import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var manager: PRManager
+    @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
 
     private let intervalOptions: [(label: String, seconds: Int)] = [
         ("30 seconds", 30),
@@ -29,6 +31,21 @@ struct SettingsView: View {
 
             Divider()
 
+            // Startup Section
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Startup")
+                    .font(.headline)
+
+                Toggle("Launch at login", isOn: $launchAtLogin)
+                    .onChange(of: launchAtLogin) { newValue in
+                        try? newValue
+                            ? SMAppService.mainApp.register()
+                            : SMAppService.mainApp.unregister()
+                    }
+            }
+
+            Divider()
+
             // Polling Interval Section
             VStack(alignment: .leading, spacing: 8) {
                 Text("Refresh Interval")
@@ -49,6 +66,6 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(24)
-        .frame(width: 360, height: 380)
+        .frame(width: 360, height: 430)
     }
 }

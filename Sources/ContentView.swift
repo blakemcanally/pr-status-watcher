@@ -1,15 +1,39 @@
 import SwiftUI
 
+enum PRTab: String, CaseIterable {
+    case myPRs = "My PRs"
+    case reviews = "Reviews"
+}
+
 struct ContentView: View {
     @EnvironmentObject var manager: PRManager
     @Environment(\.openWindow) private var openWindow
+    @State private var selectedTab: PRTab = .myPRs
     @State private var collapsedRepos: Set<String> = []
 
-    /// PRs grouped by repo, sorted by repo name. Within each repo, sorted by state: Open, Draft, Queued.
+    /// PRs for the currently selected tab.
+    private var activePRs: [PullRequest] {
+        switch selectedTab {
+        case .myPRs: return manager.pullRequests
+        case .reviews: return manager.reviewPRs
+        }
+    }
+
+    /// Active PRs grouped by repo, sorted by repo name. Sort within each repo depends on tab.
     private var groupedPRs: [(repo: String, prs: [PullRequest])] {
-        let dict = Dictionary(grouping: manager.pullRequests, by: \.repoFullName)
+        let dict = Dictionary(grouping: activePRs, by: \.repoFullName)
+        let isReviews = selectedTab == .reviews
         return dict.keys.sorted().map { key in
             (repo: key, prs: (dict[key] ?? []).sorted {
+                if isReviews {
+                    // Reviews tab: needs-review first, then fewest approvals, then state, then number
+                    if $0.reviewSortPriority != $1.reviewSortPriority {
+                        return $0.reviewSortPriority < $1.reviewSortPriority
+                    }
+                    if $0.approvalCount != $1.approvalCount {
+                        return $0.approvalCount < $1.approvalCount
+                    }
+                }
                 let lhsPriority = $0.sortPriority
                 let rhsPriority = $1.sortPriority
                 if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
@@ -36,8 +60,15 @@ struct ContentView: View {
             Image(systemName: "arrow.triangle.pull")
                 .font(.title3.weight(.semibold))
                 .foregroundColor(.accentColor)
-            Text("PR Status Watcher")
-                .font(.headline)
+
+            Picker("", selection: $selectedTab) {
+                ForEach(PRTab.allCases, id: \.self) { tab in
+                    Text(tab.rawValue).tag(tab)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 180)
+
             Spacer()
             if manager.isRefreshing {
                 ProgressView()
@@ -61,7 +92,7 @@ struct ContentView: View {
 
     private var prList: some View {
         Group {
-            if manager.pullRequests.isEmpty {
+            if activePRs.isEmpty {
                 emptyState
             } else {
                 ScrollView {
@@ -92,6 +123,10 @@ struct ContentView: View {
                         .contextMenu {
                             Button("Open in Browser") {
                                 NSWorkspace.shared.open(pullRequest.url)
+                            }
+                            Button("Copy Branch Name") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(pullRequest.headRefName, forType: .string)
                             }
                             Button("Copy URL") {
                                 NSPasteboard.general.clearContents()
@@ -180,17 +215,21 @@ struct ContentView: View {
     private var emptyState: some View {
         VStack(spacing: 10) {
             Spacer()
-            Image(systemName: "tray")
+            Image(systemName: selectedTab == .myPRs ? "tray" : "eye")
                 .font(.system(size: 32))
                 .foregroundColor(.secondary)
-            Text("No open pull requests")
+            Text(selectedTab == .myPRs ? "No open pull requests" : "No review requests")
                 .font(.title3)
                 .foregroundColor(.secondary)
-            Text("Your open, draft, and queued PRs will appear here automatically")
-                .font(.caption)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
+            Text(
+                selectedTab == .myPRs
+                    ? "Your open, draft, and queued PRs will appear here automatically"
+                    : "Pull requests where your review is requested will appear here"
+            )
+            .font(.caption)
+            .foregroundColor(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 24)
             Spacer()
         }
         .frame(maxWidth: .infinity)

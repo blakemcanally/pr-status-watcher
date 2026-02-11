@@ -7,6 +7,7 @@ import UserNotifications
 @MainActor
 final class PRManager: ObservableObject {
     @Published var pullRequests: [PullRequest] = []
+    @Published var reviewPRs: [PullRequest] = []
     @Published var isRefreshing = false
     @Published var lastError: String?
     @Published var ghUser: String?
@@ -146,18 +147,28 @@ final class PRManager: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        // Single GraphQL call fetches all PRs with CI status — runs off main thread
+        // Fetch authored PRs and review-requested PRs in parallel
         let svc = service
-        let result: Result<[PullRequest], Error> = await Task.detached {
+        async let myResult: Result<[PullRequest], Error> = Task.detached {
             do {
-                let prs = try svc.fetchAllMyOpenPRs(username: user)
-                return .success(prs)
+                return .success(try svc.fetchAllMyOpenPRs(username: user))
             } catch {
                 return .failure(error)
             }
         }.value
 
-        switch result {
+        async let reviewResult: Result<[PullRequest], Error> = Task.detached {
+            do {
+                return .success(try svc.fetchReviewRequestedPRs(username: user))
+            } catch {
+                return .failure(error)
+            }
+        }.value
+
+        let (myPRs, revPRs) = await (myResult, reviewResult)
+
+        // Process authored PRs
+        switch myPRs {
         case .success(let prs):
             let sorted = prs.sorted {
                 if $0.repoFullName != $1.repoFullName {
@@ -180,6 +191,20 @@ final class PRManager: ObservableObject {
             lastError = nil
         case .failure(let error):
             lastError = error.localizedDescription
+        }
+
+        // Process review-requested PRs
+        switch revPRs {
+        case .success(let prs):
+            reviewPRs = prs.sorted {
+                if $0.repoFullName != $1.repoFullName {
+                    return $0.repoFullName < $1.repoFullName
+                }
+                return $0.number > $1.number
+            }
+        case .failure:
+            // Don't overwrite lastError from authored PRs — review failures are secondary
+            break
         }
     }
 

@@ -19,10 +19,12 @@ struct PullRequest: Identifiable {
     var checksFailed: Int
     var url: URL
     var headSHA: String
+    var headRefName: String
     var lastFetched: Date
     var reviewDecision: ReviewDecision
     var mergeable: MergeableState
     var queuePosition: Int?
+    var approvalCount: Int
     var failedChecks: [CheckInfo]
 
     var repoFullName: String { "\(owner)/\(repo)" }
@@ -36,6 +38,16 @@ struct PullRequest: Identifiable {
         case .draft: return 1
         case .merged: return 3
         case .closed: return 3
+        }
+    }
+
+    /// Review sort priority for the Reviews tab.
+    /// Needs-review first (0), then changes-requested (1), then approved (2).
+    var reviewSortPriority: Int {
+        switch reviewDecision {
+        case .reviewRequired, .none: return 0
+        case .changesRequested: return 1
+        case .approved: return 2
         }
     }
 

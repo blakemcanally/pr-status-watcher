@@ -1,10 +1,25 @@
 import SwiftUI
+import UserNotifications
 
 // MARK: - App Delegate (hide from Dock, menu-bar only)
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.accessory)
+        UNUserNotificationCenter.current().delegate = self
+    }
+
+    /// Open the PR URL when the user clicks a notification.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        if let urlString = response.notification.request.content.userInfo["url"] as? String,
+           let url = URL(string: urlString) {
+            NSWorkspace.shared.open(url)
+        }
+        completionHandler()
     }
 }
 
