@@ -1,13 +1,10 @@
 import SwiftUI
 import AppKit
 import UserNotifications
+import os
 // MARK: - PR Manager (ViewModel)
 
-private func log(_ message: String) {
-    let ts = ISO8601DateFormatter().string(from: Date())
-    print("[\(ts)] PRManager: \(message)")
-    fflush(stdout)
-}
+private let logger = Logger(subsystem: "PRStatusWatcher", category: "PRManager")
 
 @MainActor
 final class PRManager: ObservableObject {
@@ -69,15 +66,15 @@ final class PRManager: ObservableObject {
         requestNotificationPermission()
 
         // Resolve gh user off the main thread so the menu bar is immediately clickable
-        log("init: starting user resolution")
+        logger.info("init: starting user resolution")
         let svc = service
         Task {
-            log("init: resolving gh user...")
+            logger.info("init: resolving gh user...")
             ghUser = await Task.detached { svc.currentUser() }.value
-            log("init: gh user resolved to \(self.ghUser ?? "nil")")
-            log("init: calling refreshAll...")
+            logger.info("init: gh user resolved to \(self.ghUser ?? "nil", privacy: .public)")
+            logger.info("init: calling refreshAll...")
             await refreshAll()
-            log("init: refreshAll completed, starting polling")
+            logger.info("init: refreshAll completed, starting polling")
             startPolling()
         }
     }
@@ -174,59 +171,50 @@ final class PRManager: ObservableObject {
 
     func refreshAll() async {
         guard let user = ghUser else {
-            log("refreshAll: no gh user, aborting")
+            logger.warning("refreshAll: no gh user, aborting")
             lastError = "gh not authenticated"
             return
         }
 
         // Skip if a refresh is already in flight (prevents competing updates)
         guard !isRefreshing else {
-            log("refreshAll: already in progress, skipping")
+            logger.info("refreshAll: already in progress, skipping")
             return
         }
 
-        log("refreshAll: starting (user=\(user))")
+        logger.info("refreshAll: starting (user=\(user, privacy: .public))")
         isRefreshing = true
         defer {
             isRefreshing = false
-            log("refreshAll: done, isRefreshing=false")
+            logger.info("refreshAll: done")
         }
 
         // Fetch authored PRs and review-requested PRs in parallel
         let svc = service
-        log("refreshAll: launching detached fetch tasks...")
         async let myResult: Result<[PullRequest], Error> = Task.detached {
-            log("refreshAll: fetching my PRs...")
             do {
                 let prs = try svc.fetchAllMyOpenPRs(username: user)
-                log("refreshAll: my PRs fetched, count=\(prs.count)")
                 return .success(prs)
             } catch {
-                log("refreshAll: my PRs fetch FAILED: \(error.localizedDescription)")
                 return .failure(error)
             }
         }.value
 
         async let reviewResult: Result<[PullRequest], Error> = Task.detached {
-            log("refreshAll: fetching review PRs...")
             do {
                 let prs = try svc.fetchReviewRequestedPRs(username: user)
-                log("refreshAll: review PRs fetched, count=\(prs.count)")
                 return .success(prs)
             } catch {
-                log("refreshAll: review PRs fetch FAILED: \(error.localizedDescription)")
                 return .failure(error)
             }
         }.value
 
-        log("refreshAll: awaiting both fetch results...")
         let (myPRs, revPRs) = await (myResult, reviewResult)
-        log("refreshAll: both fetches returned")
 
         // Process authored PRs — keep existing data on failure
         switch myPRs {
         case .success(let prs):
-            log("refreshAll: my PRs success, count=\(prs.count)")
+            logger.info("refreshAll: my PRs fetched (\(prs.count) results)")
             // Send notifications for status changes (skip the first load)
             if !isFirstLoad {
                 checkForStatusChanges(newPRs: prs)
@@ -240,7 +228,7 @@ final class PRManager: ObservableObject {
             pullRequests = prs
             lastError = nil
         case .failure(let error):
-            log("refreshAll: my PRs ERROR: \(error.localizedDescription)")
+            logger.error("refreshAll: my PRs fetch failed: \(error.localizedDescription, privacy: .public)")
             // Keep existing pullRequests in place — don't blank the UI
             lastError = error.localizedDescription
         }
@@ -248,10 +236,10 @@ final class PRManager: ObservableObject {
         // Process review-requested PRs — keep existing data on failure
         switch revPRs {
         case .success(let prs):
-            log("refreshAll: review PRs success, count=\(prs.count)")
+            logger.info("refreshAll: review PRs fetched (\(prs.count) results)")
             reviewPRs = prs
         case .failure(let error):
-            log("refreshAll: review PRs ERROR: \(error.localizedDescription)")
+            logger.error("refreshAll: review PRs fetch failed: \(error.localizedDescription, privacy: .public)")
             // Keep existing reviewPRs in place — don't blank the UI
             break
         }

@@ -1,11 +1,8 @@
 import Foundation
+import os
 // MARK: - GitHub Service (via `gh` CLI)
 
-private func ghLog(_ message: String) {
-    let ts = ISO8601DateFormatter().string(from: Date())
-    print("[\(ts)] GitHubService: \(message)")
-    fflush(stdout)
-}
+private let logger = Logger(subsystem: "PRStatusWatcher", category: "GitHubService")
 
 final class GitHubService: @unchecked Sendable {
     /// Path to the gh binary. Resolved once at init.
@@ -26,12 +23,14 @@ final class GitHubService: @unchecked Sendable {
 
     /// Returns the GitHub username from `gh api user`.
     func currentUser() -> String? {
-        ghLog("currentUser: calling gh api user...")
+        logger.info("currentUser: resolving via gh api user")
         guard let (out, stderr, exit) = try? run(["api", "user", "--jq", ".login"]) else {
-            ghLog("currentUser: gh cli run threw an exception")
+            logger.error("currentUser: gh cli failed to launch")
             return nil
         }
-        ghLog("currentUser: exit=\(exit), stdout=\(out.prefix(200)), stderr=\(stderr.prefix(200))")
+        if exit != 0 {
+            logger.error("currentUser: exit=\(exit), stderr=\(stderr.prefix(200), privacy: .public)")
+        }
         guard exit == 0 else { return nil }
         let username = out.trimmingCharacters(in: .whitespacesAndNewlines)
         return username.isEmpty ? nil : username
@@ -108,12 +107,11 @@ final class GitHubService: @unchecked Sendable {
         }
         """
 
-        ghLog("fetchPRs: running gh api graphql for query: \(searchQuery.prefix(80))")
+        logger.info("fetchPRs: query=\(searchQuery.prefix(80), privacy: .public)")
         let (stdout, stderr, exit) = try run(["api", "graphql", "-f", "query=\(query)"])
 
-        ghLog("fetchPRs: exit=\(exit), stdout_len=\(stdout.count), stderr_len=\(stderr.count)")
         guard exit == 0 else {
-            ghLog("fetchPRs: non-zero exit, stderr=\(stderr.prefix(500))")
+            logger.error("fetchPRs: exit=\(exit), stderr=\(stderr.prefix(500), privacy: .public)")
             throw GHError.apiError(stderr.isEmpty ? stdout : stderr)
         }
 
@@ -123,14 +121,14 @@ final class GitHubService: @unchecked Sendable {
               let search = dataDict["search"] as? [String: Any],
               let nodes = search["nodes"] as? [[String: Any]]
         else {
-            ghLog("fetchPRs: JSON parsing failed, stdout preview=\(stdout.prefix(500))")
+            logger.error("fetchPRs: failed to parse JSON response")
             throw GHError.invalidJSON
         }
 
         let prs = nodes.compactMap { node -> PullRequest? in
             parsePRNode(node)
         }
-        ghLog("fetchPRs: parsed \(prs.count) PRs from \(nodes.count) nodes")
+        logger.info("fetchPRs: parsed \(prs.count) PRs from \(nodes.count) nodes")
         return prs
     }
 
