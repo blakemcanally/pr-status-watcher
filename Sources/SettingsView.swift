@@ -66,6 +66,9 @@ struct SettingsView: View {
             Spacer()
         }
         .padding(24)
-        .frame(width: 360, height: 430)
+        .frame(
+            minWidth: 320, idealWidth: 360, maxWidth: 480,
+            minHeight: 380, idealHeight: 430, maxHeight: 600
+        )
     }
 }
