@@ -170,24 +170,17 @@ final class PRManager: ObservableObject {
         // Process authored PRs
         switch myPRs {
         case .success(let prs):
-            let sorted = prs.sorted {
-                if $0.repoFullName != $1.repoFullName {
-                    return $0.repoFullName < $1.repoFullName
-                }
-                return $0.number > $1.number
-            }
-
             // Send notifications for status changes (skip the first load)
             if !isFirstLoad {
-                checkForStatusChanges(newPRs: sorted)
+                checkForStatusChanges(newPRs: prs)
             }
             isFirstLoad = false
 
             // Update tracked state for next diff
-            previousCIStates = Dictionary(uniqueKeysWithValues: sorted.map { ($0.id, $0.ciStatus) })
-            previousPRIds = Set(sorted.map { $0.id })
+            previousCIStates = Dictionary(uniqueKeysWithValues: prs.map { ($0.id, $0.ciStatus) })
+            previousPRIds = Set(prs.map { $0.id })
 
-            pullRequests = sorted
+            pullRequests = prs
             lastError = nil
         case .failure(let error):
             lastError = error.localizedDescription
@@ -196,12 +189,7 @@ final class PRManager: ObservableObject {
         // Process review-requested PRs
         switch revPRs {
         case .success(let prs):
-            reviewPRs = prs.sorted {
-                if $0.repoFullName != $1.repoFullName {
-                    return $0.repoFullName < $1.repoFullName
-                }
-                return $0.number > $1.number
-            }
+            reviewPRs = prs
         case .failure:
             // Don't overwrite lastError from authored PRs — review failures are secondary
             break
