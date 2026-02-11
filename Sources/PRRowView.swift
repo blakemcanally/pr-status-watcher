@@ -178,14 +178,13 @@ struct PRRowView: View {
                 badgePill(
                     icon: ciIcon,
                     text: ciText,
-                    color: pullRequest.ciStatus.color,
-                    trailing: !pullRequest.failedChecks.isEmpty ? {
-                        AnyView(
-                            Image(systemName: showFailures ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 7, weight: .bold))
-                        )
-                    } : nil
-                )
+                    color: pullRequest.ciStatus.color
+                ) {
+                    if !pullRequest.failedChecks.isEmpty {
+                        Image(systemName: showFailures ? "chevron.up" : "chevron.down")
+                            .font(.system(size: 7, weight: .bold))
+                    }
+                }
             }
             .buttonStyle(.plain)
         }
@@ -216,15 +215,23 @@ struct PRRowView: View {
     private func badgePill(
         icon: String,
         text: String,
+        color: Color
+    ) -> some View {
+        badgePill(icon: icon, text: text, color: color) { EmptyView() }
+    }
+
+    private func badgePill<Trailing: View>(
+        icon: String,
+        text: String,
         color: Color,
-        trailing: (() -> AnyView)? = nil
+        @ViewBuilder trailing: () -> Trailing
     ) -> some View {
         HStack(spacing: 3) {
             Image(systemName: icon)
                 .font(.caption2)
             Text(text)
                 .font(.caption2.weight(.medium))
-            if let trailing { trailing() }
+            trailing()
         }
         .padding(.horizontal, 6)
         .padding(.vertical, 2)
