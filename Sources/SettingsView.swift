@@ -4,6 +4,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var manager: PRManager
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
+    @State private var loginError: String?
 
     private let intervalOptions: [(label: String, seconds: Int)] = [
         ("30 seconds", 30),
@@ -38,10 +39,23 @@ struct SettingsView: View {
 
                 Toggle("Launch at login", isOn: $launchAtLogin)
                     .onChange(of: launchAtLogin) { newValue in
-                        try? newValue
-                            ? SMAppService.mainApp.register()
-                            : SMAppService.mainApp.unregister()
+                        do {
+                            if newValue {
+                                try SMAppService.mainApp.register()
+                            } else {
+                                try SMAppService.mainApp.unregister()
+                            }
+                            loginError = nil
+                        } catch {
+                            launchAtLogin = !newValue  // revert toggle
+                            loginError = error.localizedDescription
+                        }
                     }
+                if let loginError {
+                    Text(loginError)
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
             }
 
             Divider()
