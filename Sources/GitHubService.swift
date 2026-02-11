@@ -39,11 +39,19 @@ final class GitHubService: @unchecked Sendable {
 
     // MARK: - Shared Fetch
 
+    /// Escape special characters for safe interpolation into a GraphQL/JSON string literal.
+    private func escapeForGraphQL(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+    }
+
     /// Fetch PRs matching an arbitrary GitHub search query string.
     private func fetchPRs(searchQuery: String) throws -> [PullRequest] {
+        let escapedQuery = escapeForGraphQL(searchQuery)
         let query = """
         query {
-          search(query: "\(searchQuery)", type: ISSUE, first: 100) {
+          search(query: "\(escapedQuery)", type: ISSUE, first: 100) {
             nodes {
               ... on PullRequest {
                 number
