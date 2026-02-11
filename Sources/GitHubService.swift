@@ -73,6 +73,11 @@ final class GitHubService: @unchecked Sendable {
                               conclusion
                               detailsUrl
                             }
+                            ... on StatusContext {
+                              context
+                              state
+                              targetUrl
+                            }
                           }
                         }
                       }
@@ -251,16 +256,33 @@ final class GitHubService: @unchecked Sendable {
         var counts = CheckCounts(passed: 0, failed: 0, pending: 0, failedChecks: [])
 
         for ctx in contextNodes {
-            let status = ctx["status"] as? String ?? ""
-            let conclusion = ctx["conclusion"] as? String ?? ""
-
-            // StatusContext nodes (not CheckRun) show up as empty — skip them
-            if status.isEmpty && conclusion.isEmpty { continue }
-
-            if status == "COMPLETED" {
-                classifyCompletedCheck(ctx, conclusion: conclusion, counts: &counts)
+            if let contextName = ctx["context"] as? String {
+                // StatusContext node
+                let state = ctx["state"] as? String ?? ""
+                switch state {
+                case "SUCCESS":
+                    counts.passed += 1
+                case "FAILURE", "ERROR":
+                    counts.failed += 1
+                    let targetUrl = (ctx["targetUrl"] as? String).flatMap { URL(string: $0) }
+                    counts.failedChecks.append(PullRequest.CheckInfo(name: contextName, detailsUrl: targetUrl))
+                case "PENDING", "EXPECTED":
+                    counts.pending += 1
+                default:
+                    counts.pending += 1
+                }
             } else {
-                counts.pending += 1
+                // CheckRun node
+                let status = ctx["status"] as? String ?? ""
+                let conclusion = ctx["conclusion"] as? String ?? ""
+
+                if status.isEmpty && conclusion.isEmpty { continue }
+
+                if status == "COMPLETED" {
+                    classifyCompletedCheck(ctx, conclusion: conclusion, counts: &counts)
+                } else {
+                    counts.pending += 1
+                }
             }
         }
 
