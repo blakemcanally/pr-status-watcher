@@ -19,22 +19,12 @@ final class GitHubService: @unchecked Sendable {
 
     // MARK: - Public API
 
-    /// Returns the GitHub username from `gh auth status`.
+    /// Returns the GitHub username from `gh api user`.
     func currentUser() -> String? {
-        guard let (out, _, _) = try? run(["auth", "status", "--active"]) else { return nil }
-        // Parse "Logged in to github.com account USERNAME" from the output
-        for line in out.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.contains("Logged in to") && trimmed.contains("account") {
-                // Format: "✓ Logged in to github.com account blakemcanally (keyring)"
-                if let range = trimmed.range(of: "account ") {
-                    let after = trimmed[range.upperBound...]
-                    let username = after.prefix(while: { !$0.isWhitespace && $0 != "(" })
-                    if !username.isEmpty { return String(username) }
-                }
-            }
-        }
-        return nil
+        guard let (out, _, exit) = try? run(["api", "user", "--jq", ".login"]) else { return nil }
+        guard exit == 0 else { return nil }
+        let username = out.trimmingCharacters(in: .whitespacesAndNewlines)
+        return username.isEmpty ? nil : username
     }
 
     /// Fetch all open PRs authored by the given user.
