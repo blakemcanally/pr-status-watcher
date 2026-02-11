@@ -1,93 +1,92 @@
-import XCTest
+import Testing
+import Foundation
 @testable import PRStatusWatcher
 
-final class SettingsStoreTests: XCTestCase {
-    private var suiteName: String!
-    private var defaults: UserDefaults!
-    private var store: SettingsStore!
+@Suite final class SettingsStoreTests {
+    private let suiteName: String
+    private let defaults: UserDefaults
+    private let store: SettingsStore
 
-    override func setUp() {
-        super.setUp()
+    init() {
         suiteName = "SettingsStoreTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: suiteName)!
         store = SettingsStore(defaults: defaults)
     }
 
-    override func tearDown() {
+    deinit {
         UserDefaults.standard.removePersistentDomain(forName: suiteName)
-        super.tearDown()
     }
 
     // MARK: - Refresh Interval
 
-    func testLoadRefreshIntervalDefaultIs60() {
-        XCTAssertEqual(store.loadRefreshInterval(), 60)
+    @Test func loadRefreshIntervalDefaultIs60() {
+        #expect(store.loadRefreshInterval() == 60)
     }
 
-    func testLoadRefreshIntervalReturnsSavedValue() {
+    @Test func loadRefreshIntervalReturnsSavedValue() {
         defaults.set(120, forKey: SettingsStore.pollingKey)
-        XCTAssertEqual(store.loadRefreshInterval(), 120)
+        #expect(store.loadRefreshInterval() == 120)
     }
 
-    func testLoadRefreshIntervalIgnoresZero() {
+    @Test func loadRefreshIntervalIgnoresZero() {
         defaults.set(0, forKey: SettingsStore.pollingKey)
-        XCTAssertEqual(store.loadRefreshInterval(), 60)
+        #expect(store.loadRefreshInterval() == 60)
     }
 
-    func testLoadRefreshIntervalIgnoresNegative() {
+    @Test func loadRefreshIntervalIgnoresNegative() {
         defaults.set(-10, forKey: SettingsStore.pollingKey)
-        XCTAssertEqual(store.loadRefreshInterval(), 60)
+        #expect(store.loadRefreshInterval() == 60)
     }
 
-    func testSaveRefreshIntervalPersists() {
+    @Test func saveRefreshIntervalPersists() {
         store.saveRefreshInterval(300)
-        XCTAssertEqual(defaults.integer(forKey: SettingsStore.pollingKey), 300)
+        #expect(defaults.integer(forKey: SettingsStore.pollingKey) == 300)
     }
 
     // MARK: - Collapsed Repos
 
-    func testLoadCollapsedReposDefaultIsEmpty() {
-        XCTAssertEqual(store.loadCollapsedRepos(), [])
+    @Test func loadCollapsedReposDefaultIsEmpty() {
+        #expect(store.loadCollapsedRepos() == [])
     }
 
-    func testLoadCollapsedReposReturnsSavedValue() {
+    @Test func loadCollapsedReposReturnsSavedValue() {
         defaults.set(["owner/repo1", "owner/repo2"], forKey: SettingsStore.collapsedReposKey)
-        XCTAssertEqual(store.loadCollapsedRepos(), ["owner/repo1", "owner/repo2"])
+        #expect(store.loadCollapsedRepos() == ["owner/repo1", "owner/repo2"])
     }
 
-    func testSaveCollapsedReposPersists() {
+    @Test func saveCollapsedReposPersists() {
         store.saveCollapsedRepos(["a/b", "c/d"])
         let saved = Set(defaults.stringArray(forKey: SettingsStore.collapsedReposKey) ?? [])
-        XCTAssertEqual(saved, ["a/b", "c/d"])
+        #expect(saved == ["a/b", "c/d"])
     }
 
     // MARK: - Filter Settings
 
-    func testLoadFilterSettingsDefaultIsFilterSettingsInit() {
-        XCTAssertEqual(store.loadFilterSettings(), FilterSettings())
+    @Test func loadFilterSettingsDefaultIsFilterSettingsInit() {
+        #expect(store.loadFilterSettings() == FilterSettings())
     }
 
-    func testLoadFilterSettingsReturnsSavedValue() throws {
+    @Test func loadFilterSettingsReturnsSavedValue() throws {
         let custom = FilterSettings(hideDrafts: false, hideCIFailing: true)
         let data = try JSONEncoder().encode(custom)
         defaults.set(data, forKey: SettingsStore.filterSettingsKey)
-        XCTAssertEqual(store.loadFilterSettings(), custom)
+        #expect(store.loadFilterSettings() == custom)
     }
 
-    func testLoadFilterSettingsCorruptedDataReturnsDefault() {
+    @Test func loadFilterSettingsCorruptedDataReturnsDefault() {
         defaults.set(Data("not json".utf8), forKey: SettingsStore.filterSettingsKey)
-        XCTAssertEqual(store.loadFilterSettings(), FilterSettings())
+        #expect(store.loadFilterSettings() == FilterSettings())
     }
 
-    func testSaveFilterSettingsPersists() throws {
+    @Test func saveFilterSettingsPersists() throws {
         let custom = FilterSettings(hideDrafts: false, hideCIPending: true, hideApproved: true)
         store.saveFilterSettings(custom)
-        let data = defaults.data(forKey: SettingsStore.filterSettingsKey)!
+        let data = try #require(defaults.data(forKey: SettingsStore.filterSettingsKey))
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
-        XCTAssertEqual(decoded, custom)
+        #expect(decoded == custom)
     }
 
-    func testSaveAndLoadRoundTrip() {
+    @Test func saveAndLoadRoundTrip() {
         let settings = FilterSettings(
             hideDrafts: false,
             hideCIFailing: true,
@@ -96,6 +95,6 @@ final class SettingsStoreTests: XCTestCase {
             hideApproved: true
         )
         store.saveFilterSettings(settings)
-        XCTAssertEqual(store.loadFilterSettings(), settings)
+        #expect(store.loadFilterSettings() == settings)
     }
 }

@@ -1,12 +1,13 @@
-import XCTest
+import Testing
+import Foundation
 @testable import PRStatusWatcher
 
-final class StatusChangeDetectorTests: XCTestCase {
+@Suite struct StatusChangeDetectorTests {
     let detector = StatusChangeDetector()
 
     // MARK: - CI Transitions
 
-    func testPendingToFailureSendsCIFailed() {
+    @Test func pendingToFailureSendsCIFailed() {
         let prev: [String: PullRequest.CIStatus] = ["test/repo#1": .pending]
         let prevIds: Set<String> = ["test/repo#1"]
         let newPRs = [PullRequest.fixture(number: 1, ciStatus: .failure)]
@@ -15,11 +16,11 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: newPRs
         )
 
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.title, "CI Failed")
+        #expect(result.count == 1)
+        #expect(result.first?.title == "CI Failed")
     }
 
-    func testPendingToSuccessSendsAllChecksPassed() {
+    @Test func pendingToSuccessSendsAllChecksPassed() {
         let prev: [String: PullRequest.CIStatus] = ["test/repo#1": .pending]
         let prevIds: Set<String> = ["test/repo#1"]
         let newPRs = [PullRequest.fixture(number: 1, ciStatus: .success)]
@@ -28,11 +29,11 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: newPRs
         )
 
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.title, "All Checks Passed")
+        #expect(result.count == 1)
+        #expect(result.first?.title == "All Checks Passed")
     }
 
-    func testSuccessToFailureDoesNotNotify() {
+    @Test func successToFailureDoesNotNotify() {
         let prev: [String: PullRequest.CIStatus] = ["test/repo#1": .success]
         let prevIds: Set<String> = ["test/repo#1"]
         let newPRs = [PullRequest.fixture(number: 1, ciStatus: .failure)]
@@ -41,10 +42,10 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: newPRs
         )
 
-        XCTAssertTrue(result.isEmpty)
+        #expect(result.isEmpty)
     }
 
-    func testFailureToSuccessDoesNotNotify() {
+    @Test func failureToSuccessDoesNotNotify() {
         let prev: [String: PullRequest.CIStatus] = ["test/repo#1": .failure]
         let prevIds: Set<String> = ["test/repo#1"]
         let newPRs = [PullRequest.fixture(number: 1, ciStatus: .success)]
@@ -53,10 +54,10 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: newPRs
         )
 
-        XCTAssertTrue(result.isEmpty)
+        #expect(result.isEmpty)
     }
 
-    func testNoStatusChangeProducesNoNotification() {
+    @Test func noStatusChangeProducesNoNotification() {
         let prev: [String: PullRequest.CIStatus] = ["test/repo#1": .success]
         let prevIds: Set<String> = ["test/repo#1"]
         let newPRs = [PullRequest.fixture(number: 1, ciStatus: .success)]
@@ -65,24 +66,24 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: newPRs
         )
 
-        XCTAssertTrue(result.isEmpty)
+        #expect(result.isEmpty)
     }
 
     // MARK: - New PRs
 
-    func testNewPRDoesNotNotify() {
+    @Test func newPRDoesNotNotify() {
         let result = detector.detectChanges(
             previousCIStates: [:], previousPRIds: [], newPRs: [
-                PullRequest.fixture(number: 1, ciStatus: .pending)
+                PullRequest.fixture(number: 1, ciStatus: .pending),
             ]
         )
 
-        XCTAssertTrue(result.isEmpty)
+        #expect(result.isEmpty)
     }
 
     // MARK: - Disappeared PRs
 
-    func testDisappearedPRSendsNotification() {
+    @Test func disappearedPRSendsNotification() {
         let prev: [String: PullRequest.CIStatus] = ["test/repo#1": .success]
         let prevIds: Set<String> = ["test/repo#1"]
 
@@ -90,35 +91,35 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: []
         )
 
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.title, "PR No Longer Open")
-        XCTAssertTrue(result.first?.body.contains("test/repo#1") ?? false)
-        XCTAssertNil(result.first?.url)
+        #expect(result.count == 1)
+        #expect(result.first?.title == "PR No Longer Open")
+        #expect(result.first?.body.contains("test/repo#1") == true)
+        #expect(result.first?.url == nil)
     }
 
-    func testMultipleDisappearedPRsSendMultipleNotifications() {
+    @Test func multipleDisappearedPRsSendMultipleNotifications() {
         let prevIds: Set<String> = ["test/repo#1", "test/repo#2", "test/repo#3"]
         let prev: [String: PullRequest.CIStatus] = [
             "test/repo#1": .success,
             "test/repo#2": .pending,
-            "test/repo#3": .failure
+            "test/repo#3": .failure,
         ]
 
         let result = detector.detectChanges(
             previousCIStates: prev, previousPRIds: prevIds, newPRs: []
         )
 
-        XCTAssertEqual(result.count, 3)
-        XCTAssertTrue(result.allSatisfy { $0.title == "PR No Longer Open" })
+        #expect(result.count == 3)
+        #expect(result.allSatisfy { $0.title == "PR No Longer Open" })
     }
 
     // MARK: - Multiple Changes
 
-    func testMultipleTransitionsInSingleRefresh() {
+    @Test func multipleTransitionsInSingleRefresh() {
         let prev: [String: PullRequest.CIStatus] = [
             "test/repo#1": .pending,
             "test/repo#2": .pending,
-            "test/repo#3": .success
+            "test/repo#3": .success,
         ]
         let prevIds: Set<String> = ["test/repo#1", "test/repo#2", "test/repo#3"]
         let newPRs = [
@@ -131,24 +132,24 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: newPRs
         )
 
-        XCTAssertEqual(result.count, 3)
+        #expect(result.count == 3)
         let titles = Set(result.map(\.title))
-        XCTAssertTrue(titles.contains("CI Failed"))
-        XCTAssertTrue(titles.contains("All Checks Passed"))
-        XCTAssertTrue(titles.contains("PR No Longer Open"))
+        #expect(titles.contains("CI Failed"))
+        #expect(titles.contains("All Checks Passed"))
+        #expect(titles.contains("PR No Longer Open"))
     }
 
     // MARK: - Edge Cases
 
-    func testEmptyPreviousAndNewPRsProducesNoNotifications() {
+    @Test func emptyPreviousAndNewPRsProducesNoNotifications() {
         let result = detector.detectChanges(
             previousCIStates: [:], previousPRIds: [], newPRs: []
         )
 
-        XCTAssertTrue(result.isEmpty)
+        #expect(result.isEmpty)
     }
 
-    func testNotificationBodyContainsRepoAndNumber() {
+    @Test func notificationBodyContainsRepoAndNumber() {
         let prev: [String: PullRequest.CIStatus] = ["myorg/myrepo#42": .pending]
         let prevIds: Set<String> = ["myorg/myrepo#42"]
         let pr = PullRequest.fixture(
@@ -160,10 +161,10 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: [pr]
         )
 
-        XCTAssertEqual(result.first?.body, "myorg/myrepo #42: Fix the thing")
+        #expect(result.first?.body == "myorg/myrepo #42: Fix the thing")
     }
 
-    func testNotificationURLIsSetFromPR() {
+    @Test func notificationURLIsSetFromPR() {
         let expectedURL = URL(string: "https://github.com/test/repo/pull/1")!
         let prev: [String: PullRequest.CIStatus] = ["test/repo#1": .pending]
         let prevIds: Set<String> = ["test/repo#1"]
@@ -173,10 +174,10 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: newPRs
         )
 
-        XCTAssertEqual(result.first?.url, expectedURL)
+        #expect(result.first?.url == expectedURL)
     }
 
-    func testPendingToPendingDoesNotNotify() {
+    @Test func pendingToPendingDoesNotNotify() {
         let prev: [String: PullRequest.CIStatus] = ["test/repo#1": .pending]
         let prevIds: Set<String> = ["test/repo#1"]
         let newPRs = [PullRequest.fixture(number: 1, ciStatus: .pending)]
@@ -185,10 +186,10 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: newPRs
         )
 
-        XCTAssertTrue(result.isEmpty)
+        #expect(result.isEmpty)
     }
 
-    func testPendingToUnknownDoesNotNotify() {
+    @Test func pendingToUnknownDoesNotNotify() {
         let prev: [String: PullRequest.CIStatus] = ["test/repo#1": .pending]
         let prevIds: Set<String> = ["test/repo#1"]
         let newPRs = [PullRequest.fixture(number: 1, ciStatus: .unknown)]
@@ -197,6 +198,6 @@ final class StatusChangeDetectorTests: XCTestCase {
             previousCIStates: prev, previousPRIds: prevIds, newPRs: newPRs
         )
 
-        XCTAssertTrue(result.isEmpty)
+        #expect(result.isEmpty)
     }
 }

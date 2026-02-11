@@ -1,14 +1,14 @@
-import XCTest
+import Testing
+import Foundation
 @testable import PRStatusWatcher
 
 @MainActor
-final class PRManagerTests: XCTestCase {
-    private var mockService: MockGitHubService!
-    private var mockSettings: MockSettingsStore!
-    private var mockNotifications: MockNotificationService!
+@Suite struct PRManagerTests {
+    let mockService: MockGitHubService
+    let mockSettings: MockSettingsStore
+    let mockNotifications: MockNotificationService
 
-    override func setUp() {
-        super.setUp()
+    init() {
         mockService = MockGitHubService()
         mockSettings = MockSettingsStore()
         mockNotifications = MockNotificationService()
@@ -24,26 +24,26 @@ final class PRManagerTests: XCTestCase {
 
     // MARK: - Init
 
-    func testInitLoadsSettingsFromStore() {
+    @Test func initLoadsSettingsFromStore() {
         mockSettings.refreshInterval = 120
         mockSettings.collapsedRepos = ["a/b"]
         mockSettings.filterSettings = FilterSettings(hideDrafts: false)
 
         let manager = makeManager()
 
-        XCTAssertEqual(manager.refreshInterval, 120)
-        XCTAssertEqual(manager.collapsedRepos, ["a/b"])
-        XCTAssertEqual(manager.filterSettings, FilterSettings(hideDrafts: false))
+        #expect(manager.refreshInterval == 120)
+        #expect(manager.collapsedRepos == ["a/b"])
+        #expect(manager.filterSettings == FilterSettings(hideDrafts: false))
     }
 
-    func testInitRequestsNotificationPermission() {
+    @Test func initRequestsNotificationPermission() {
         _ = makeManager()
-        XCTAssertTrue(mockNotifications.permissionRequested)
+        #expect(mockNotifications.permissionRequested)
     }
 
     // MARK: - refreshAll
 
-    func testRefreshAllSuccessUpdatesPullRequests() async {
+    @Test func refreshAllSuccessUpdatesPullRequests() async {
         let prs = [PullRequest.fixture(number: 1), PullRequest.fixture(number: 2)]
         mockService.myPRsResult = .success(prs)
         mockService.reviewPRsResult = .success([])
@@ -52,12 +52,12 @@ final class PRManagerTests: XCTestCase {
         manager.ghUser = "testuser"
         await manager.refreshAll()
 
-        XCTAssertEqual(manager.pullRequests.count, 2)
-        XCTAssertNil(manager.lastError)
-        XCTAssertTrue(manager.hasCompletedInitialLoad)
+        #expect(manager.pullRequests.count == 2)
+        #expect(manager.lastError == nil)
+        #expect(manager.hasCompletedInitialLoad)
     }
 
-    func testRefreshAllSuccessUpdatesReviewPRs() async {
+    @Test func refreshAllSuccessUpdatesReviewPRs() async {
         let reviewPRs = [PullRequest.fixture(number: 10)]
         mockService.myPRsResult = .success([])
         mockService.reviewPRsResult = .success(reviewPRs)
@@ -66,13 +66,13 @@ final class PRManagerTests: XCTestCase {
         manager.ghUser = "testuser"
         await manager.refreshAll()
 
-        XCTAssertEqual(manager.reviewPRs.count, 1)
+        #expect(manager.reviewPRs.count == 1)
     }
 
-    func testRefreshAllMyPRsFailureSetsLastError() async {
+    @Test func refreshAllMyPRsFailureSetsLastError() async {
         mockService.myPRsResult = .failure(
             NSError(domain: "test", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Network timeout"
+                NSLocalizedDescriptionKey: "Network timeout",
             ])
         )
 
@@ -80,51 +80,51 @@ final class PRManagerTests: XCTestCase {
         manager.ghUser = "testuser"
         await manager.refreshAll()
 
-        XCTAssertEqual(manager.lastError, "Network timeout")
+        #expect(manager.lastError == "Network timeout")
     }
 
-    func testRefreshAllNilUserSetsAuthError() async {
+    @Test func refreshAllNilUserSetsAuthError() async {
         let manager = makeManager()
         manager.ghUser = nil
         await manager.refreshAll()
 
-        XCTAssertEqual(manager.lastError, "gh not authenticated")
+        #expect(manager.lastError == "gh not authenticated")
     }
 
-    func testRefreshAllFirstLoadSkipsNotifications() async {
+    @Test func refreshAllFirstLoadSkipsNotifications() async {
         mockService.myPRsResult = .success([
-            PullRequest.fixture(number: 1, ciStatus: .failure)
+            PullRequest.fixture(number: 1, ciStatus: .failure),
         ])
 
         let manager = makeManager()
         manager.ghUser = "testuser"
         await manager.refreshAll()
 
-        XCTAssertTrue(mockNotifications.sentNotifications.isEmpty)
+        #expect(mockNotifications.sentNotifications.isEmpty)
     }
 
-    func testRefreshAllSecondLoadSendsNotifications() async {
+    @Test func refreshAllSecondLoadSendsNotifications() async {
         let manager = makeManager()
         manager.ghUser = "testuser"
 
         // First load: pending
         mockService.myPRsResult = .success([
-            PullRequest.fixture(number: 1, ciStatus: .pending)
+            PullRequest.fixture(number: 1, ciStatus: .pending),
         ])
         await manager.refreshAll()
-        XCTAssertTrue(mockNotifications.sentNotifications.isEmpty)
+        #expect(mockNotifications.sentNotifications.isEmpty)
 
         // Second load: failure
         mockService.myPRsResult = .success([
-            PullRequest.fixture(number: 1, ciStatus: .failure)
+            PullRequest.fixture(number: 1, ciStatus: .failure),
         ])
         await manager.refreshAll()
 
-        XCTAssertEqual(mockNotifications.sentNotifications.count, 1)
-        XCTAssertEqual(mockNotifications.sentNotifications.first?.title, "CI Failed")
+        #expect(mockNotifications.sentNotifications.count == 1)
+        #expect(mockNotifications.sentNotifications.first?.title == "CI Failed")
     }
 
-    func testRefreshAllReviewPRsFailureKeepsExistingData() async {
+    @Test func refreshAllReviewPRsFailureKeepsExistingData() async {
         let manager = makeManager()
         manager.ghUser = "testuser"
 
@@ -132,7 +132,7 @@ final class PRManagerTests: XCTestCase {
         mockService.myPRsResult = .success([])
         mockService.reviewPRsResult = .success([PullRequest.fixture(number: 5)])
         await manager.refreshAll()
-        XCTAssertEqual(manager.reviewPRs.count, 1)
+        #expect(manager.reviewPRs.count == 1)
 
         // Second load: review PRs fail
         mockService.reviewPRsResult = .failure(
@@ -141,44 +141,44 @@ final class PRManagerTests: XCTestCase {
         await manager.refreshAll()
 
         // Should keep existing review PRs
-        XCTAssertEqual(manager.reviewPRs.count, 1)
+        #expect(manager.reviewPRs.count == 1)
     }
 
     // MARK: - Settings Persistence
 
-    func testFilterSettingsDidSetSavesToStore() {
+    @Test func filterSettingsDidSetSavesToStore() {
         let manager = makeManager()
         // didSet fires once during init, so reset the count
         let initialCount = mockSettings.saveFilterSettingsCallCount
         manager.filterSettings = FilterSettings(hideDrafts: false, hideCIFailing: true)
 
-        XCTAssertEqual(mockSettings.saveFilterSettingsCallCount, initialCount + 1)
-        XCTAssertEqual(mockSettings.filterSettings, FilterSettings(hideDrafts: false, hideCIFailing: true))
+        #expect(mockSettings.saveFilterSettingsCallCount == initialCount + 1)
+        #expect(mockSettings.filterSettings == FilterSettings(hideDrafts: false, hideCIFailing: true))
     }
 
-    func testRefreshIntervalDidSetSavesToStore() {
+    @Test func refreshIntervalDidSetSavesToStore() {
         let manager = makeManager()
         let initialCount = mockSettings.saveRefreshIntervalCallCount
         manager.refreshInterval = 300
 
-        XCTAssertEqual(mockSettings.saveRefreshIntervalCallCount, initialCount + 1)
-        XCTAssertEqual(mockSettings.refreshInterval, 300)
+        #expect(mockSettings.saveRefreshIntervalCallCount == initialCount + 1)
+        #expect(mockSettings.refreshInterval == 300)
     }
 
-    func testCollapsedReposDidSetSavesToStore() {
+    @Test func collapsedReposDidSetSavesToStore() {
         let manager = makeManager()
         let initialCount = mockSettings.saveCollapsedReposCallCount
         manager.collapsedRepos = ["org/repo"]
 
-        XCTAssertEqual(mockSettings.saveCollapsedReposCallCount, initialCount + 1)
-        XCTAssertEqual(mockSettings.collapsedRepos, ["org/repo"])
+        #expect(mockSettings.saveCollapsedReposCallCount == initialCount + 1)
+        #expect(mockSettings.collapsedRepos == ["org/repo"])
     }
 
     // MARK: - Delegated Properties
 
-    func testNotificationsAvailableDelegatesToService() {
+    @Test func notificationsAvailableDelegatesToService() {
         mockNotifications.isAvailable = false
         let manager = makeManager()
-        XCTAssertFalse(manager.notificationsAvailable)
+        #expect(!manager.notificationsAvailable)
     }
 }

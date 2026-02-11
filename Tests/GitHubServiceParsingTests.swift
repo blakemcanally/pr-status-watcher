@@ -1,163 +1,153 @@
-import XCTest
+import Testing
 @testable import PRStatusWatcher
 
-final class GitHubServiceParsingTests: XCTestCase {
+@Suite struct GitHubServiceParsingTests {
     let service = GitHubService()
 
     // MARK: - parsePRState
 
-    func testParsePRStateMerged() {
-        XCTAssertEqual(service.parsePRState(rawState: "MERGED", isDraft: false), .merged)
-    }
-
-    func testParsePRStateClosed() {
-        XCTAssertEqual(service.parsePRState(rawState: "CLOSED", isDraft: false), .closed)
-    }
-
-    func testParsePRStateOpenNotDraft() {
-        XCTAssertEqual(service.parsePRState(rawState: "OPEN", isDraft: false), .open)
-    }
-
-    func testParsePRStateOpenDraft() {
-        XCTAssertEqual(service.parsePRState(rawState: "OPEN", isDraft: true), .draft)
-    }
-
-    func testParsePRStateUnknownDefault() {
-        XCTAssertEqual(service.parsePRState(rawState: "SOMETHING", isDraft: false), .open)
+    @Test(arguments: [
+        ("MERGED", false, PullRequest.PRState.merged),
+        ("CLOSED", false, PullRequest.PRState.closed),
+        ("OPEN", false, PullRequest.PRState.open),
+        ("OPEN", true, PullRequest.PRState.draft),
+        ("SOMETHING", false, PullRequest.PRState.open),
+    ])
+    func parsePRState(rawState: String, isDraft: Bool, expected: PullRequest.PRState) {
+        #expect(service.parsePRState(rawState: rawState, isDraft: isDraft) == expected)
     }
 
     // MARK: - parseReviewDecision
 
-    func testParseReviewDecisionApproved() {
+    @Test func parseReviewDecisionApproved() {
         let node: [String: Any] = ["reviewDecision": "APPROVED"]
-        XCTAssertEqual(service.parseReviewDecision(from: node), .approved)
+        #expect(service.parseReviewDecision(from: node) == .approved)
     }
 
-    func testParseReviewDecisionChangesRequested() {
+    @Test func parseReviewDecisionChangesRequested() {
         let node: [String: Any] = ["reviewDecision": "CHANGES_REQUESTED"]
-        XCTAssertEqual(service.parseReviewDecision(from: node), .changesRequested)
+        #expect(service.parseReviewDecision(from: node) == .changesRequested)
     }
 
-    func testParseReviewDecisionReviewRequired() {
+    @Test func parseReviewDecisionReviewRequired() {
         let node: [String: Any] = ["reviewDecision": "REVIEW_REQUIRED"]
-        XCTAssertEqual(service.parseReviewDecision(from: node), .reviewRequired)
+        #expect(service.parseReviewDecision(from: node) == .reviewRequired)
     }
 
-    func testParseReviewDecisionMissing() {
+    @Test func parseReviewDecisionMissing() {
         let node: [String: Any] = [:]
-        XCTAssertEqual(service.parseReviewDecision(from: node), .none)
+        #expect(service.parseReviewDecision(from: node) == .none)
     }
 
     // MARK: - parseMergeableState
 
-    func testParseMergeableStateMergeable() {
+    @Test func parseMergeableStateMergeable() {
         let node: [String: Any] = ["mergeable": "MERGEABLE"]
-        XCTAssertEqual(service.parseMergeableState(from: node), .mergeable)
+        #expect(service.parseMergeableState(from: node) == .mergeable)
     }
 
-    func testParseMergeableStateConflicting() {
+    @Test func parseMergeableStateConflicting() {
         let node: [String: Any] = ["mergeable": "CONFLICTING"]
-        XCTAssertEqual(service.parseMergeableState(from: node), .conflicting)
+        #expect(service.parseMergeableState(from: node) == .conflicting)
     }
 
-    func testParseMergeableStateUnknown() {
+    @Test func parseMergeableStateUnknown() {
         let node: [String: Any] = ["mergeable": "UNKNOWN"]
-        XCTAssertEqual(service.parseMergeableState(from: node), .unknown)
+        #expect(service.parseMergeableState(from: node) == .unknown)
     }
 
     // MARK: - tallyCheckContexts
 
-    func testTallyAllPassing() {
+    @Test func tallyAllPassing() {
         let contexts: [[String: Any]] = [
             ["status": "COMPLETED", "conclusion": "SUCCESS", "name": "build"],
             ["status": "COMPLETED", "conclusion": "SUCCESS", "name": "test"],
         ]
         let counts = service.tallyCheckContexts(contexts)
-        XCTAssertEqual(counts.passed, 2)
-        XCTAssertEqual(counts.failed, 0)
-        XCTAssertEqual(counts.pending, 0)
+        #expect(counts.passed == 2)
+        #expect(counts.failed == 0)
+        #expect(counts.pending == 0)
     }
 
-    func testTallyMixed() {
+    @Test func tallyMixed() {
         let contexts: [[String: Any]] = [
             ["status": "COMPLETED", "conclusion": "SUCCESS", "name": "build"],
             ["status": "COMPLETED", "conclusion": "FAILURE", "name": "lint"],
             ["status": "IN_PROGRESS", "conclusion": "", "name": "test"],
         ]
         let counts = service.tallyCheckContexts(contexts)
-        XCTAssertEqual(counts.passed, 1)
-        XCTAssertEqual(counts.failed, 1)
-        XCTAssertEqual(counts.pending, 1)
-        XCTAssertEqual(counts.failedChecks.count, 1)
-        XCTAssertEqual(counts.failedChecks.first?.name, "lint")
+        #expect(counts.passed == 1)
+        #expect(counts.failed == 1)
+        #expect(counts.pending == 1)
+        #expect(counts.failedChecks.count == 1)
+        #expect(counts.failedChecks.first?.name == "lint")
     }
 
-    func testTallyEmpty() {
+    @Test func tallyEmpty() {
         let counts = service.tallyCheckContexts([])
-        XCTAssertEqual(counts.passed, 0)
-        XCTAssertEqual(counts.failed, 0)
-        XCTAssertEqual(counts.pending, 0)
+        #expect(counts.passed == 0)
+        #expect(counts.failed == 0)
+        #expect(counts.pending == 0)
     }
 
-    func testTallySkippedAndNeutral() {
+    @Test func tallySkippedAndNeutral() {
         let contexts: [[String: Any]] = [
             ["status": "COMPLETED", "conclusion": "SKIPPED", "name": "optional"],
             ["status": "COMPLETED", "conclusion": "NEUTRAL", "name": "info"],
         ]
         let counts = service.tallyCheckContexts(contexts)
-        XCTAssertEqual(counts.passed, 2)
-        XCTAssertEqual(counts.failed, 0)
+        #expect(counts.passed == 2)
+        #expect(counts.failed == 0)
     }
 
-    func testTallyEmptyNodes() {
-        // StatusContext nodes that have no status/conclusion (empty)
+    @Test func tallyEmptyNodes() {
         let contexts: [[String: Any]] = [
             [:],
             ["status": "", "conclusion": ""],
         ]
         let counts = service.tallyCheckContexts(contexts)
-        XCTAssertEqual(counts.passed, 0)
-        XCTAssertEqual(counts.failed, 0)
-        XCTAssertEqual(counts.pending, 0)
+        #expect(counts.passed == 0)
+        #expect(counts.failed == 0)
+        #expect(counts.pending == 0)
     }
 
     // MARK: - resolveOverallStatus
 
-    func testResolveOverallStatusEmpty() {
+    @Test func resolveOverallStatusEmpty() {
         let result = service.resolveOverallStatus(totalCount: 0, passed: 0, failed: 0, pending: 0, rollup: [:])
-        XCTAssertEqual(result, .unknown)
+        #expect(result == .unknown)
     }
 
-    func testResolveOverallStatusAllPassed() {
+    @Test func resolveOverallStatusAllPassed() {
         let result = service.resolveOverallStatus(totalCount: 3, passed: 3, failed: 0, pending: 0, rollup: [:])
-        XCTAssertEqual(result, .success)
+        #expect(result == .success)
     }
 
-    func testResolveOverallStatusHasFailure() {
+    @Test func resolveOverallStatusHasFailure() {
         let result = service.resolveOverallStatus(totalCount: 3, passed: 1, failed: 1, pending: 1, rollup: [:])
-        XCTAssertEqual(result, .failure)
+        #expect(result == .failure)
     }
 
-    func testResolveOverallStatusHasPending() {
+    @Test func resolveOverallStatusHasPending() {
         let result = service.resolveOverallStatus(totalCount: 3, passed: 2, failed: 0, pending: 1, rollup: [:])
-        XCTAssertEqual(result, .pending)
+        #expect(result == .pending)
     }
 
-    func testResolveOverallStatusFallbackToRollup() {
+    @Test func resolveOverallStatusFallbackToRollup() {
         let rollup: [String: Any] = ["state": "SUCCESS"]
         let result = service.resolveOverallStatus(totalCount: 2, passed: 0, failed: 0, pending: 0, rollup: rollup)
-        XCTAssertEqual(result, .success)
+        #expect(result == .success)
     }
 
-    func testResolveOverallStatusFallbackToRollupFailure() {
+    @Test func resolveOverallStatusFallbackToRollupFailure() {
         let rollup: [String: Any] = ["state": "FAILURE"]
         let result = service.resolveOverallStatus(totalCount: 2, passed: 0, failed: 0, pending: 0, rollup: rollup)
-        XCTAssertEqual(result, .failure)
+        #expect(result == .failure)
     }
 
     // MARK: - parsePRNode
 
-    func testParsePRNodeValid() {
+    @Test func parsePRNodeValid() {
         let node: [String: Any] = [
             "number": 42,
             "title": "Test PR",
@@ -173,22 +163,22 @@ final class GitHubServiceParsingTests: XCTestCase {
             "reviews": ["totalCount": 1],
         ]
         let pr = service.parsePRNode(node)
-        XCTAssertNotNil(pr)
-        XCTAssertEqual(pr?.number, 42)
-        XCTAssertEqual(pr?.title, "Test PR")
-        XCTAssertEqual(pr?.author, "testuser")
-        XCTAssertEqual(pr?.state, .open)
-        XCTAssertEqual(pr?.owner, "test")
-        XCTAssertEqual(pr?.repo, "repo")
+        #expect(pr != nil)
+        #expect(pr?.number == 42)
+        #expect(pr?.title == "Test PR")
+        #expect(pr?.author == "testuser")
+        #expect(pr?.state == .open)
+        #expect(pr?.owner == "test")
+        #expect(pr?.repo == "repo")
     }
 
-    func testParsePRNodeMissingRequiredFields() {
+    @Test func parsePRNodeMissingRequiredFields() {
         let node: [String: Any] = ["title": "Incomplete"]
         let pr = service.parsePRNode(node)
-        XCTAssertNil(pr)
+        #expect(pr == nil)
     }
 
-    func testParsePRNodeDraft() {
+    @Test func parsePRNodeDraft() {
         let node: [String: Any] = [
             "number": 1,
             "title": "Draft PR",
@@ -198,6 +188,6 @@ final class GitHubServiceParsingTests: XCTestCase {
             "state": "OPEN",
         ]
         let pr = service.parsePRNode(node)
-        XCTAssertEqual(pr?.state, .draft)
+        #expect(pr?.state == .draft)
     }
 }

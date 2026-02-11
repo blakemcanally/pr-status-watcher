@@ -92,6 +92,69 @@ Sources/
 - **Swift concurrency** (async/await, TaskGroup)
 - Zero third-party dependencies
 
+## Testing
+
+### Run tests
+
+```bash
+swift test
+```
+
+### Code coverage
+
+```bash
+# Print per-file coverage summary
+./coverage.sh
+
+# Generate HTML report for line-by-line inspection
+./coverage.sh --html
+open .build/coverage-html/index.html
+
+# Export lcov for CI integration
+./coverage.sh --lcov
+```
+
+### Conventions
+
+This project uses **[Swift Testing](https://developer.apple.com/documentation/testing)** (not XCTest). Follow these conventions when adding or modifying tests:
+
+- **Import**: `import Testing` (never `import XCTest`)
+- **Test containers**: Use `@Suite struct` by default. Use `@Suite final class` only when `deinit` cleanup is needed (e.g., UserDefaults teardown).
+- **Test functions**: Mark with `@Test`. Drop the `test` prefix — write `@Test func refreshUpdatesState()`, not `@Test func testRefreshUpdatesState()`.
+- **Assertions**: Use `#expect()` for all checks and `#require()` for force-unwrapping.
+
+  | Instead of (XCTest) | Use (Swift Testing) |
+  |---------------------|---------------------|
+  | `XCTAssertEqual(a, b)` | `#expect(a == b)` |
+  | `XCTAssertTrue(a)` | `#expect(a)` |
+  | `XCTAssertFalse(a)` | `#expect(!a)` |
+  | `XCTAssertNil(a)` | `#expect(a == nil)` |
+  | `XCTAssertNotNil(a)` | `#expect(a != nil)` |
+  | `try XCTUnwrap(a)` | `try #require(a)` |
+
+- **Parameterized tests**: When multiple tests share the same logic with different inputs, use `@Test(arguments:)` instead of writing separate functions.
+- **setUp → init**: Use `init()` for per-test setup. Swift Testing creates a fresh instance for each `@Test` method automatically.
+- **tearDown → deinit**: When cleanup is needed, use `@Suite final class` with `deinit`.
+- **Mocks**: Place in `Tests/Mocks/`. Mocks are plain classes conforming to protocols — they don't use any test framework.
+- **Fixtures**: Use `PullRequest.fixture(...)` with keyword overrides for test data (defined in `Tests/FilterSettingsTests.swift`).
+
+### Test file structure
+
+```
+Tests/
+├── FilterSettingsTests.swift          # Filter defaults, codable, predicates, persistence
+├── GitHubServiceParsingTests.swift    # GraphQL response parsing
+├── Mocks/
+│   ├── MockGitHubService.swift
+│   ├── MockNotificationService.swift
+│   └── MockSettingsStore.swift
+├── PRManagerTests.swift               # ViewModel integration tests
+├── PRStatusSummaryTests.swift         # Status icon/bar logic
+├── PullRequestTests.swift             # Model computed properties
+├── SettingsStoreTests.swift           # UserDefaults persistence
+└── StatusChangeDetectorTests.swift    # Notification change detection
+```
+
 ## Future Improvements
 
 ### Code Correctness
@@ -111,10 +174,6 @@ Sources/
 - [ ] **Add `Equatable` conformance to PullRequest** -- Improves SwiftUI diffing efficiency and enables proper change detection beyond `Identifiable`.
 - [ ] **Surface notification unavailability** -- When running via `swift run` (no bundle identifier), notifications are silently disabled. Show feedback so the user knows why notifications aren't working.
 - [ ] **Handle `SMAppService.register()` failures** -- The launch-at-login toggle in `SettingsView` silently swallows errors with `try?`. If registration fails (e.g., app not codesigned), the toggle appears to flip but nothing happens.
-
-### Testing
-
-- [ ] **Add a test target and parsing tests** -- Zero tests exist today. Add a test target to `Package.swift` and write unit tests for `parsePRNode`, `parseCheckStatus`, `tallyCheckContexts`, and `resolveOverallStatus` using mock JSON dictionaries. Cover success, failure, pending, mixed, empty, and malformed inputs.
 
 ### UX / Accessibility
 

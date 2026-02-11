@@ -1,4 +1,5 @@
-import XCTest
+import Testing
+import Foundation
 @testable import PRStatusWatcher
 
 // MARK: - PullRequest Test Fixture
@@ -55,39 +56,39 @@ extension PullRequest {
 
 // MARK: - FilterSettings Default Values
 
-final class FilterSettingsDefaultsTests: XCTestCase {
-    func testDefaultHideDraftsIsTrue() {
-        XCTAssertTrue(FilterSettings().hideDrafts)
+@Suite struct FilterSettingsDefaultsTests {
+    @Test func defaultHideDraftsIsTrue() {
+        #expect(FilterSettings().hideDrafts)
     }
 
-    func testDefaultHideCIFailingIsFalse() {
-        XCTAssertFalse(FilterSettings().hideCIFailing)
+    @Test func defaultHideCIFailingIsFalse() {
+        #expect(!FilterSettings().hideCIFailing)
     }
 
-    func testDefaultHideCIPendingIsFalse() {
-        XCTAssertFalse(FilterSettings().hideCIPending)
+    @Test func defaultHideCIPendingIsFalse() {
+        #expect(!FilterSettings().hideCIPending)
     }
 
-    func testDefaultHideConflictingIsFalse() {
-        XCTAssertFalse(FilterSettings().hideConflicting)
+    @Test func defaultHideConflictingIsFalse() {
+        #expect(!FilterSettings().hideConflicting)
     }
 
-    func testDefaultHideApprovedIsFalse() {
-        XCTAssertFalse(FilterSettings().hideApproved)
+    @Test func defaultHideApprovedIsFalse() {
+        #expect(!FilterSettings().hideApproved)
     }
 }
 
 // MARK: - FilterSettings Codable
 
-final class FilterSettingsCodableTests: XCTestCase {
-    func testCodableRoundTripDefaultValues() throws {
+@Suite struct FilterSettingsCodableTests {
+    @Test func codableRoundTripDefaultValues() throws {
         let original = FilterSettings()
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
-        XCTAssertEqual(decoded, original)
+        #expect(decoded == original)
     }
 
-    func testCodableRoundTripCustomValues() throws {
+    @Test func codableRoundTripCustomValues() throws {
         let original = FilterSettings(
             hideDrafts: false,
             hideCIFailing: true,
@@ -97,69 +98,69 @@ final class FilterSettingsCodableTests: XCTestCase {
         )
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
-        XCTAssertEqual(decoded, original)
+        #expect(decoded == original)
     }
 
-    func testDecodingEmptyJSONUsesDefaults() throws {
+    @Test func decodingEmptyJSONUsesDefaults() throws {
         let json = "{}".data(using: .utf8)!
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: json)
-        XCTAssertEqual(decoded, FilterSettings())
+        #expect(decoded == FilterSettings())
     }
 
-    func testDecodingPartialJSONUsesDefaultsForMissingKeys() throws {
+    @Test func decodingPartialJSONUsesDefaultsForMissingKeys() throws {
         let json = #"{"hideDrafts": false}"#.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: json)
-        XCTAssertFalse(decoded.hideDrafts)
+        #expect(!decoded.hideDrafts)
         // All other properties should have their defaults
-        XCTAssertFalse(decoded.hideCIFailing)
-        XCTAssertFalse(decoded.hideCIPending)
-        XCTAssertFalse(decoded.hideConflicting)
-        XCTAssertFalse(decoded.hideApproved)
+        #expect(!decoded.hideCIFailing)
+        #expect(!decoded.hideCIPending)
+        #expect(!decoded.hideConflicting)
+        #expect(!decoded.hideApproved)
     }
 }
 
 // MARK: - Filter Predicate: Individual Filters
 
-final class FilterPredicateTests: XCTestCase {
+@Suite struct FilterPredicateTests {
     // MARK: hideDrafts
 
-    func testDefaultSettingsHideDraftPRs() {
+    @Test func defaultSettingsHideDraftPRs() {
         let prs = [
             PullRequest.fixture(number: 1, state: .draft),
             PullRequest.fixture(number: 2, state: .open),
         ]
         let result = FilterSettings().applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.number, 2)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 2)
     }
 
-    func testHideDraftsDisabledShowsDraftPRs() {
+    @Test func hideDraftsDisabledShowsDraftPRs() {
         let settings = FilterSettings(hideDrafts: false)
         let prs = [PullRequest.fixture(state: .draft)]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 1)
+        #expect(result.count == 1)
     }
 
-    func testHideDraftsDoesNotAffectOpenPRs() {
+    @Test func hideDraftsDoesNotAffectOpenPRs() {
         let prs = [PullRequest.fixture(state: .open)]
         let result = FilterSettings().applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 1)
+        #expect(result.count == 1)
     }
 
     // MARK: hideCIFailing
 
-    func testHideCIFailingFiltersFailingPRs() {
+    @Test func hideCIFailingFiltersFailingPRs() {
         let settings = FilterSettings(hideDrafts: false, hideCIFailing: true)
         let prs = [
             PullRequest.fixture(number: 1, ciStatus: .failure),
             PullRequest.fixture(number: 2, ciStatus: .success),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.number, 2)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 2)
     }
 
-    func testHideCIFailingDoesNotAffectPendingOrSuccess() {
+    @Test func hideCIFailingDoesNotAffectPendingOrSuccess() {
         let settings = FilterSettings(hideDrafts: false, hideCIFailing: true)
         let prs = [
             PullRequest.fixture(number: 1, ciStatus: .pending),
@@ -167,66 +168,66 @@ final class FilterPredicateTests: XCTestCase {
             PullRequest.fixture(number: 3, ciStatus: .unknown),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 3)
+        #expect(result.count == 3)
     }
 
     // MARK: hideCIPending
 
-    func testHideCIPendingFiltersPendingPRs() {
+    @Test func hideCIPendingFiltersPendingPRs() {
         let settings = FilterSettings(hideDrafts: false, hideCIPending: true)
         let prs = [
             PullRequest.fixture(number: 1, ciStatus: .pending),
             PullRequest.fixture(number: 2, ciStatus: .success),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.number, 2)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 2)
     }
 
-    func testHideCIPendingDoesNotAffectFailureOrSuccess() {
+    @Test func hideCIPendingDoesNotAffectFailureOrSuccess() {
         let settings = FilterSettings(hideDrafts: false, hideCIPending: true)
         let prs = [
             PullRequest.fixture(number: 1, ciStatus: .failure),
             PullRequest.fixture(number: 2, ciStatus: .success),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 2)
+        #expect(result.count == 2)
     }
 
     // MARK: hideConflicting
 
-    func testHideConflictingFiltersConflictingPRs() {
+    @Test func hideConflictingFiltersConflictingPRs() {
         let settings = FilterSettings(hideDrafts: false, hideConflicting: true)
         let prs = [
             PullRequest.fixture(number: 1, mergeable: .conflicting),
             PullRequest.fixture(number: 2, mergeable: .mergeable),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.number, 2)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 2)
     }
 
-    func testHideConflictingDoesNotFilterUnknownMergeable() {
+    @Test func hideConflictingDoesNotFilterUnknownMergeable() {
         let settings = FilterSettings(hideDrafts: false, hideConflicting: true)
         let prs = [PullRequest.fixture(mergeable: .unknown)]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 1)
+        #expect(result.count == 1)
     }
 
     // MARK: hideApproved
 
-    func testHideApprovedFiltersApprovedPRs() {
+    @Test func hideApprovedFiltersApprovedPRs() {
         let settings = FilterSettings(hideDrafts: false, hideApproved: true)
         let prs = [
             PullRequest.fixture(number: 1, reviewDecision: .approved),
             PullRequest.fixture(number: 2, reviewDecision: .reviewRequired),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.number, 2)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 2)
     }
 
-    func testHideApprovedDoesNotAffectOtherDecisions() {
+    @Test func hideApprovedDoesNotAffectOtherDecisions() {
         let settings = FilterSettings(hideDrafts: false, hideApproved: true)
         let prs = [
             PullRequest.fixture(number: 1, reviewDecision: .reviewRequired),
@@ -234,14 +235,14 @@ final class FilterPredicateTests: XCTestCase {
             PullRequest.fixture(number: 3, reviewDecision: .none),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 3)
+        #expect(result.count == 3)
     }
 }
 
 // MARK: - Filter Predicate: Combinations & Edge Cases
 
-final class FilterCombinationTests: XCTestCase {
-    func testMultipleFiltersApplySimultaneously() {
+@Suite struct FilterCombinationTests {
+    @Test func multipleFiltersApplySimultaneously() {
         let settings = FilterSettings(
             hideDrafts: true,
             hideCIFailing: true,
@@ -254,11 +255,11 @@ final class FilterCombinationTests: XCTestCase {
             PullRequest.fixture(number: 4, state: .open, ciStatus: .success),         // visible
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 1)
-        XCTAssertEqual(result.first?.number, 4)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 4)
     }
 
-    func testAllFiltersEnabledOnlyShowsCleanOpenPRs() {
+    @Test func allFiltersEnabledOnlyShowsCleanOpenPRs() {
         let settings = FilterSettings(
             hideDrafts: true,
             hideCIFailing: true,
@@ -275,10 +276,10 @@ final class FilterCombinationTests: XCTestCase {
             mergeable: .mergeable
         )
         let result = settings.applyReviewFilters(to: [clean])
-        XCTAssertEqual(result.count, 1)
+        #expect(result.count == 1)
     }
 
-    func testNoFiltersEnabledReturnsAllPRs() {
+    @Test func noFiltersEnabledReturnsAllPRs() {
         let settings = FilterSettings(
             hideDrafts: false,
             hideCIFailing: false,
@@ -293,26 +294,26 @@ final class FilterCombinationTests: XCTestCase {
             PullRequest.fixture(number: 4, reviewDecision: .approved),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.count, 4)
+        #expect(result.count == 4)
     }
 
-    func testEmptyInputReturnsEmpty() {
+    @Test func emptyInputReturnsEmpty() {
         let settings = FilterSettings()
         let result = settings.applyReviewFilters(to: [])
-        XCTAssertTrue(result.isEmpty)
+        #expect(result.isEmpty)
     }
 
-    func testAllPRsFilteredReturnsEmpty() {
+    @Test func allPRsFilteredReturnsEmpty() {
         let settings = FilterSettings(hideDrafts: true)
         let prs = [
             PullRequest.fixture(number: 1, state: .draft),
             PullRequest.fixture(number: 2, state: .draft),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertTrue(result.isEmpty)
+        #expect(result.isEmpty)
     }
 
-    func testFilterPreservesOriginalOrder() {
+    @Test func filterPreservesOriginalOrder() {
         let settings = FilterSettings(hideDrafts: true)
         let prs = [
             PullRequest.fixture(number: 5, state: .open),
@@ -322,10 +323,10 @@ final class FilterCombinationTests: XCTestCase {
             PullRequest.fixture(number: 2, state: .open),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        XCTAssertEqual(result.map(\.number), [5, 1, 2])
+        #expect(result.map(\.number) == [5, 1, 2])
     }
 
-    func testPRMatchingMultipleFiltersIsHiddenOnce() {
+    @Test func prMatchingMultipleFiltersIsHiddenOnce() {
         // A draft PR with failing CI and conflicts — should be hidden, not double-counted
         let settings = FilterSettings(
             hideDrafts: true,
@@ -334,21 +335,24 @@ final class FilterCombinationTests: XCTestCase {
         )
         let pr = PullRequest.fixture(state: .draft, ciStatus: .failure, mergeable: .conflicting)
         let result = settings.applyReviewFilters(to: [pr])
-        XCTAssertTrue(result.isEmpty)
+        #expect(result.isEmpty)
     }
 }
 
 // MARK: - FilterSettings Persistence
 
-final class FilterSettingsPersistenceTests: XCTestCase {
-    private let testKey = "filter_settings_test"
+@Suite final class FilterSettingsPersistenceTests {
+    private let testKey: String
 
-    override func tearDown() {
-        UserDefaults.standard.removeObject(forKey: testKey)
-        super.tearDown()
+    init() {
+        testKey = "filter_settings_test_\(UUID().uuidString)"
     }
 
-    func testPersistAndReloadViaUserDefaults() throws {
+    deinit {
+        UserDefaults.standard.removeObject(forKey: testKey)
+    }
+
+    @Test func persistAndReloadViaUserDefaults() throws {
         let original = FilterSettings(
             hideDrafts: false,
             hideCIFailing: true,
@@ -356,28 +360,23 @@ final class FilterSettingsPersistenceTests: XCTestCase {
             hideConflicting: true,
             hideApproved: true
         )
-
-        // Persist
         let data = try JSONEncoder().encode(original)
         UserDefaults.standard.set(data, forKey: testKey)
 
-        // Reload
-        let loaded = UserDefaults.standard.data(forKey: testKey)!
+        let loaded = try #require(UserDefaults.standard.data(forKey: testKey))
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: loaded)
-
-        XCTAssertEqual(decoded, original)
+        #expect(decoded == original)
     }
 
-    func testMissingKeyReturnsNilData() {
-        let data = UserDefaults.standard.data(forKey: "nonexistent_filter_key")
-        XCTAssertNil(data)
+    @Test func missingKeyReturnsNilData() {
+        let data = UserDefaults.standard.data(forKey: "nonexistent_filter_key_\(UUID().uuidString)")
+        #expect(data == nil)
     }
 
-    func testCorruptedDataFallsBackGracefully() {
+    @Test func corruptedDataFallsBackGracefully() {
         UserDefaults.standard.set(Data("not json".utf8), forKey: testKey)
         let data = UserDefaults.standard.data(forKey: testKey)!
         let decoded = try? JSONDecoder().decode(FilterSettings.self, from: data)
-        XCTAssertNil(decoded)
-        // Callers should fall back to FilterSettings() when decode returns nil
+        #expect(decoded == nil)
     }
 }
