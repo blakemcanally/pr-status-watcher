@@ -1,6 +1,5 @@
 import SwiftUI
 import AppKit
-import UserNotifications
 import os
 // MARK: - PR Manager (ViewModel)
 
@@ -14,56 +13,50 @@ final class PRManager: ObservableObject {
     @Published var lastError: String?
     @Published var ghUser: String?
 
-    let service = GitHubService()
-    private static let pollingKey = "polling_interval"
-    private static let collapsedReposKey = "collapsed_repos"
-    private static let filterSettingsKey = "filter_settings"
+    private let service: GitHubServiceProtocol
+    private let settingsStore: SettingsStoreProtocol
+    private let notificationService: NotificationServiceProtocol
+    private let scheduler = PollingScheduler()
 
     @Published var collapsedRepos: Set<String> = [] {
-        didSet { UserDefaults.standard.set(Array(collapsedRepos), forKey: Self.collapsedReposKey) }
+        didSet { settingsStore.saveCollapsedRepos(collapsedRepos) }
     }
 
     @Published var filterSettings: FilterSettings = FilterSettings() {
-        didSet {
-            if let data = try? JSONEncoder().encode(filterSettings) {
-                UserDefaults.standard.set(data, forKey: Self.filterSettingsKey)
-            }
-        }
+        didSet { settingsStore.saveFilterSettings(filterSettings) }
     }
 
     @Published var refreshInterval: Int {
-        didSet { UserDefaults.standard.set(refreshInterval, forKey: Self.pollingKey) }
+        didSet { settingsStore.saveRefreshInterval(refreshInterval) }
     }
 
-    /// Human-readable label for the current interval, used in the footer.
     var refreshIntervalLabel: String {
-        if refreshInterval < 60 { return "\(refreshInterval)s" }
-        if refreshInterval == 60 { return "1 min" }
-        if refreshInterval % 60 == 0 { return "\(refreshInterval / 60) min" }
-        return "\(refreshInterval)s"
+        PRStatusSummary.refreshIntervalLabel(for: refreshInterval)
     }
 
     /// True until the first successful fetch completes (distinguishes "loading" from "genuinely empty").
     @Published var hasCompletedInitialLoad = false
 
+    private let changeDetector = StatusChangeDetector()
     private var previousCIStates: [String: PullRequest.CIStatus] = [:]
     private var previousPRIds: Set<String> = []
     private var isFirstLoad = true
-    private var pollingTask: Task<Void, Never>?
 
     // MARK: - Init
 
-    init() {
-        let saved = UserDefaults.standard.integer(forKey: Self.pollingKey)
-        self.refreshInterval = saved > 0 ? saved : 60
-        self.collapsedRepos = Set(UserDefaults.standard.stringArray(forKey: Self.collapsedReposKey) ?? [])
+    init(
+        service: GitHubServiceProtocol,
+        settingsStore: SettingsStoreProtocol,
+        notificationService: NotificationServiceProtocol
+    ) {
+        self.service = service
+        self.settingsStore = settingsStore
+        self.notificationService = notificationService
+        self.refreshInterval = settingsStore.loadRefreshInterval()
+        self.collapsedRepos = settingsStore.loadCollapsedRepos()
+        self.filterSettings = settingsStore.loadFilterSettings()
 
-        if let data = UserDefaults.standard.data(forKey: Self.filterSettingsKey),
-           let saved = try? JSONDecoder().decode(FilterSettings.self, from: data) {
-            self.filterSettings = saved
-        }
-
-        requestNotificationPermission()
+        notificationService.requestPermission()
 
         // Resolve gh user off the main thread so the menu bar is immediately clickable
         logger.info("init: starting user resolution")
@@ -82,46 +75,27 @@ final class PRManager: ObservableObject {
     // MARK: - Menu Bar Icon
 
     var overallStatusIcon: String {
-        if pullRequests.isEmpty {
-            return "arrow.triangle.pull"
-        }
-        if pullRequests.contains(where: { $0.ciStatus == .failure }) {
-            return "xmark.circle.fill"
-        }
-        if pullRequests.contains(where: { $0.ciStatus == .pending }) {
-            return "clock.circle.fill"
-        }
-        if pullRequests.allSatisfy({ $0.state == .merged || $0.state == .closed }) {
-            return "checkmark.circle"
-        }
-        return "checkmark.circle.fill"
+        PRStatusSummary.overallStatusIcon(for: pullRequests)
     }
 
     var hasFailure: Bool {
-        pullRequests.contains(where: { $0.ciStatus == .failure })
+        PRStatusSummary.hasFailure(in: pullRequests)
     }
 
     var openCount: Int {
-        pullRequests.filter { $0.state == .open && !$0.isInMergeQueue }.count
+        PRStatusSummary.openCount(in: pullRequests)
     }
 
     var draftCount: Int {
-        pullRequests.filter { $0.state == .draft }.count
+        PRStatusSummary.draftCount(in: pullRequests)
     }
 
     var queuedCount: Int {
-        pullRequests.filter { $0.isInMergeQueue }.count
+        PRStatusSummary.queuedCount(in: pullRequests)
     }
 
-    /// Compact summary for the menu bar, e.g. "3·10·2"
-    /// Order is Draft · Open · Queued (RTL mirrors the PR lifecycle flow).
     var statusBarSummary: String {
-        guard !pullRequests.isEmpty else { return "" }
-        var parts: [String] = []
-        if draftCount > 0 { parts.append("\(draftCount)") }
-        if openCount > 0 { parts.append("\(openCount)") }
-        if queuedCount > 0 { parts.append("\(queuedCount)") }
-        return parts.joined(separator: "·")
+        PRStatusSummary.statusBarSummary(for: pullRequests)
     }
 
     /// Menu bar image with a red badge dot when CI is failing.
@@ -250,85 +224,29 @@ final class PRManager: ObservableObject {
     // MARK: - Polling
 
     private func startPolling() {
-        pollingTask?.cancel()
-        pollingTask = Task {
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(refreshInterval) * 1_000_000_000)
-                await refreshAll()
-            }
+        scheduler.start(interval: refreshInterval) { [weak self] in
+            await self?.refreshAll()
         }
-    }
-
-    deinit {
-        pollingTask?.cancel()
     }
 
     // MARK: - Notifications
 
     var notificationsAvailable: Bool {
-        Bundle.main.bundleIdentifier != nil
-    }
-
-    private func requestNotificationPermission() {
-        guard notificationsAvailable else { return }
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        notificationService.isAvailable
     }
 
     private func checkForStatusChanges(newPRs: [PullRequest]) {
-        let newIds = Set(newPRs.map { $0.id })
-
-        for pullRequest in newPRs {
-            guard let oldStatus = previousCIStates[pullRequest.id] else {
-                // New PR appeared — no notification needed
-                continue
-            }
-
-            // CI went from pending -> failure
-            if oldStatus == .pending && pullRequest.ciStatus == .failure {
-                sendNotification(
-                    title: "CI Failed",
-                    body: "\(pullRequest.repoFullName) \(pullRequest.displayNumber): \(pullRequest.title)",
-                    url: pullRequest.url
-                )
-            }
-
-            // CI went from pending -> success
-            if oldStatus == .pending && pullRequest.ciStatus == .success {
-                sendNotification(
-                    title: "All Checks Passed",
-                    body: "\(pullRequest.repoFullName) \(pullRequest.displayNumber): \(pullRequest.title)",
-                    url: pullRequest.url
-                )
-            }
-        }
-
-        // PRs that disappeared (merged or closed)
-        let disappeared = previousPRIds.subtracting(newIds)
-        for id in disappeared {
-            // We don't have the full PR info anymore, but we can parse the id
-            sendNotification(
-                title: "PR No Longer Open",
-                body: "\(id) was merged or closed",
-                url: nil
+        let notifications = changeDetector.detectChanges(
+            previousCIStates: previousCIStates,
+            previousPRIds: previousPRIds,
+            newPRs: newPRs
+        )
+        for notification in notifications {
+            notificationService.send(
+                title: notification.title,
+                body: notification.body,
+                url: notification.url
             )
         }
-    }
-
-    private func sendNotification(title: String, body: String, url: URL?) {
-        guard notificationsAvailable else { return }
-        let content = UNMutableNotificationContent()
-        content.title = title
-        content.body = body
-        content.sound = .default
-        if let url {
-            content.userInfo = ["url": url.absoluteString]
-        }
-
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil  // deliver immediately
-        )
-        UNUserNotificationCenter.current().add(request)
     }
 }

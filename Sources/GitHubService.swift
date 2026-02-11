@@ -4,7 +4,7 @@ import os
 
 private let logger = Logger(subsystem: "PRStatusWatcher", category: "GitHubService")
 
-final class GitHubService: @unchecked Sendable {
+final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
     /// Path to the gh binary. Resolved once at init.
     private let ghPath: String
 

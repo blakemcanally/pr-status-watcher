@@ -30,7 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 @main
 struct PRStatusWatcherApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    @StateObject private var manager = PRManager()
+    @StateObject private var manager = PRManager(
+        service: GitHubService(),
+        settingsStore: SettingsStore(defaults: .standard),
+        notificationService: NotificationDispatcher()
+    )
 
     var body: some Scene {
         MenuBarExtra {
