@@ -349,8 +349,6 @@ final class GitHubService: @unchecked Sendable {
 
 enum GHError: LocalizedError {
     case cliNotFound
-    case notAuthenticated
-    case notFound(String)
     case apiError(String)
     case invalidJSON
 
@@ -358,10 +356,6 @@ enum GHError: LocalizedError {
         switch self {
         case .cliNotFound:
             return "GitHub CLI (gh) not found — install it with: brew install gh"
-        case .notAuthenticated:
-            return "Not logged in — run: gh auth login"
-        case .notFound(let path):
-            return "Not found: \(path)"
         case .apiError(let msg):
             let trimmed = msg.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? "GitHub API error" : trimmed
