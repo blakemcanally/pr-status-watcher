@@ -13,6 +13,7 @@ struct PRRowView: View {
                 Circle()
                     .fill(pullRequest.statusColor)
                     .frame(width: 10, height: 10)
+                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 3) {
                     // PR number + author
@@ -94,6 +95,8 @@ struct PRRowView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("\(pullRequest.title), \(pullRequest.displayNumber) by \(pullRequest.author), \(stateText)")
+        .accessibilityHint("Opens in browser")
     }
 
     // MARK: - State Badge
@@ -183,6 +186,8 @@ struct PRRowView: View {
                 }
             }
             .buttonStyle(.plain)
+            .accessibilityLabel("CI status: \(ciText)")
+            .accessibilityHint(!pullRequest.failedChecks.isEmpty ? "Double-tap to show failed checks" : "")
         }
     }
 

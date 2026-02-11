@@ -70,6 +70,7 @@ struct ContentView: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 180)
+            .accessibilityLabel("Tab selection")
 
             Spacer()
             if manager.isRefreshing {
@@ -86,6 +87,7 @@ struct ContentView: View {
             .disabled(manager.isRefreshing)
             .help("Refresh all PRs")
             .keyboardShortcut("r", modifiers: .command)
+            .accessibilityLabel("Refresh pull requests")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -195,6 +197,8 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         .background(Color.secondary.opacity(0.05))
+        .accessibilityLabel("\(repo), \(prs.count) pull requests, \(isCollapsed ? "collapsed" : "expanded")")
+        .accessibilityHint("Double-tap to \(isCollapsed ? "expand" : "collapse")")
     }
 
     @ViewBuilder
@@ -240,6 +244,7 @@ struct ContentView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity)
+        .accessibilityLabel(selectedTab == .myPRs ? "No open pull requests" : "No review requests")
     }
 
     // MARK: - Footer
@@ -278,6 +283,7 @@ struct ContentView: View {
             .buttonStyle(.borderless)
             .help("Settings")
             .keyboardShortcut(",", modifiers: .command)
+            .accessibilityLabel("Open settings")
 
             Button("Quit") {
                 NSApplication.shared.terminate(nil)
@@ -285,6 +291,7 @@ struct ContentView: View {
             .buttonStyle(.borderless)
             .font(.caption)
             .keyboardShortcut("q", modifiers: .command)
+            .accessibilityLabel("Quit application")
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 8)
