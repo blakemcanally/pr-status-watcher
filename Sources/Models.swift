@@ -3,7 +3,7 @@ import SwiftUI
 
 // MARK: - Pull Request Model
 
-struct PullRequest: Identifiable, Codable {
+struct PullRequest: Identifiable, Codable, Equatable {
     var id: String { "\(owner)/\(repo)#\(number)" }
 
     let owner: String
@@ -110,7 +110,7 @@ struct PullRequest: Identifiable, Codable {
 
     // MARK: Check Info
 
-    struct CheckInfo: Codable {
+    struct CheckInfo: Codable, Equatable {
         let name: String
         let detailsUrl: URL?
     }
