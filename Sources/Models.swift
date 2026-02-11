@@ -115,3 +115,51 @@ struct PullRequest: Identifiable, Codable, Equatable {
         let detailsUrl: URL?
     }
 }
+
+// MARK: - Review Filter Settings
+
+/// User preferences for hiding PRs on the Reviews tab that aren't ready for review.
+struct FilterSettings: Codable, Equatable {
+    var hideDrafts: Bool
+    var hideCIFailing: Bool
+    var hideCIPending: Bool
+    var hideConflicting: Bool
+    var hideApproved: Bool
+
+    init(
+        hideDrafts: Bool = true,
+        hideCIFailing: Bool = false,
+        hideCIPending: Bool = false,
+        hideConflicting: Bool = false,
+        hideApproved: Bool = false
+    ) {
+        self.hideDrafts = hideDrafts
+        self.hideCIFailing = hideCIFailing
+        self.hideCIPending = hideCIPending
+        self.hideConflicting = hideConflicting
+        self.hideApproved = hideApproved
+    }
+
+    // Custom decoder: use decodeIfPresent so that adding new filter
+    // properties in the future doesn't break previously-saved JSON.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hideDrafts = try container.decodeIfPresent(Bool.self, forKey: .hideDrafts) ?? true
+        hideCIFailing = try container.decodeIfPresent(Bool.self, forKey: .hideCIFailing) ?? false
+        hideCIPending = try container.decodeIfPresent(Bool.self, forKey: .hideCIPending) ?? false
+        hideConflicting = try container.decodeIfPresent(Bool.self, forKey: .hideConflicting) ?? false
+        hideApproved = try container.decodeIfPresent(Bool.self, forKey: .hideApproved) ?? false
+    }
+
+    /// Filter a list of PRs for the Reviews tab, removing PRs that match enabled filters.
+    func applyReviewFilters(to prs: [PullRequest]) -> [PullRequest] {
+        prs.filter { pr in
+            if hideDrafts && pr.state == .draft { return false }
+            if hideCIFailing && pr.ciStatus == .failure { return false }
+            if hideCIPending && pr.ciStatus == .pending { return false }
+            if hideConflicting && pr.mergeable == .conflicting { return false }
+            if hideApproved && pr.reviewDecision == .approved { return false }
+            return true
+        }
+    }
+}

@@ -1,8 +1,13 @@
 import SwiftUI
 import AppKit
 import UserNotifications
-
 // MARK: - PR Manager (ViewModel)
+
+private func log(_ message: String) {
+    let ts = ISO8601DateFormatter().string(from: Date())
+    print("[\(ts)] PRManager: \(message)")
+    fflush(stdout)
+}
 
 @MainActor
 final class PRManager: ObservableObject {
@@ -15,9 +20,18 @@ final class PRManager: ObservableObject {
     let service = GitHubService()
     private static let pollingKey = "polling_interval"
     private static let collapsedReposKey = "collapsed_repos"
+    private static let filterSettingsKey = "filter_settings"
 
     @Published var collapsedRepos: Set<String> = [] {
         didSet { UserDefaults.standard.set(Array(collapsedRepos), forKey: Self.collapsedReposKey) }
+    }
+
+    @Published var filterSettings: FilterSettings = FilterSettings() {
+        didSet {
+            if let data = try? JSONEncoder().encode(filterSettings) {
+                UserDefaults.standard.set(data, forKey: Self.filterSettingsKey)
+            }
+        }
     }
 
     @Published var refreshInterval: Int {
@@ -32,6 +46,9 @@ final class PRManager: ObservableObject {
         return "\(refreshInterval)s"
     }
 
+    /// True until the first successful fetch completes (distinguishes "loading" from "genuinely empty").
+    @Published var hasCompletedInitialLoad = false
+
     private var previousCIStates: [String: PullRequest.CIStatus] = [:]
     private var previousPRIds: Set<String> = []
     private var isFirstLoad = true
@@ -44,13 +61,23 @@ final class PRManager: ObservableObject {
         self.refreshInterval = saved > 0 ? saved : 60
         self.collapsedRepos = Set(UserDefaults.standard.stringArray(forKey: Self.collapsedReposKey) ?? [])
 
+        if let data = UserDefaults.standard.data(forKey: Self.filterSettingsKey),
+           let saved = try? JSONDecoder().decode(FilterSettings.self, from: data) {
+            self.filterSettings = saved
+        }
+
         requestNotificationPermission()
 
         // Resolve gh user off the main thread so the menu bar is immediately clickable
+        log("init: starting user resolution")
         let svc = service
         Task {
+            log("init: resolving gh user...")
             ghUser = await Task.detached { svc.currentUser() }.value
+            log("init: gh user resolved to \(self.ghUser ?? "nil")")
+            log("init: calling refreshAll...")
             await refreshAll()
+            log("init: refreshAll completed, starting polling")
             startPolling()
         }
     }
@@ -147,36 +174,59 @@ final class PRManager: ObservableObject {
 
     func refreshAll() async {
         guard let user = ghUser else {
+            log("refreshAll: no gh user, aborting")
             lastError = "gh not authenticated"
             return
         }
 
+        // Skip if a refresh is already in flight (prevents competing updates)
+        guard !isRefreshing else {
+            log("refreshAll: already in progress, skipping")
+            return
+        }
+
+        log("refreshAll: starting (user=\(user))")
         isRefreshing = true
-        defer { isRefreshing = false }
+        defer {
+            isRefreshing = false
+            log("refreshAll: done, isRefreshing=false")
+        }
 
         // Fetch authored PRs and review-requested PRs in parallel
         let svc = service
+        log("refreshAll: launching detached fetch tasks...")
         async let myResult: Result<[PullRequest], Error> = Task.detached {
+            log("refreshAll: fetching my PRs...")
             do {
-                return .success(try svc.fetchAllMyOpenPRs(username: user))
+                let prs = try svc.fetchAllMyOpenPRs(username: user)
+                log("refreshAll: my PRs fetched, count=\(prs.count)")
+                return .success(prs)
             } catch {
+                log("refreshAll: my PRs fetch FAILED: \(error.localizedDescription)")
                 return .failure(error)
             }
         }.value
 
         async let reviewResult: Result<[PullRequest], Error> = Task.detached {
+            log("refreshAll: fetching review PRs...")
             do {
-                return .success(try svc.fetchReviewRequestedPRs(username: user))
+                let prs = try svc.fetchReviewRequestedPRs(username: user)
+                log("refreshAll: review PRs fetched, count=\(prs.count)")
+                return .success(prs)
             } catch {
+                log("refreshAll: review PRs fetch FAILED: \(error.localizedDescription)")
                 return .failure(error)
             }
         }.value
 
+        log("refreshAll: awaiting both fetch results...")
         let (myPRs, revPRs) = await (myResult, reviewResult)
+        log("refreshAll: both fetches returned")
 
-        // Process authored PRs
+        // Process authored PRs — keep existing data on failure
         switch myPRs {
         case .success(let prs):
+            log("refreshAll: my PRs success, count=\(prs.count)")
             // Send notifications for status changes (skip the first load)
             if !isFirstLoad {
                 checkForStatusChanges(newPRs: prs)
@@ -190,17 +240,23 @@ final class PRManager: ObservableObject {
             pullRequests = prs
             lastError = nil
         case .failure(let error):
+            log("refreshAll: my PRs ERROR: \(error.localizedDescription)")
+            // Keep existing pullRequests in place — don't blank the UI
             lastError = error.localizedDescription
         }
 
-        // Process review-requested PRs
+        // Process review-requested PRs — keep existing data on failure
         switch revPRs {
         case .success(let prs):
+            log("refreshAll: review PRs success, count=\(prs.count)")
             reviewPRs = prs
-        case .failure:
-            // Don't overwrite lastError from authored PRs — review failures are secondary
+        case .failure(let error):
+            log("refreshAll: review PRs ERROR: \(error.localizedDescription)")
+            // Keep existing reviewPRs in place — don't blank the UI
             break
         }
+
+        hasCompletedInitialLoad = true
     }
 
     // MARK: - Polling

@@ -15,76 +15,105 @@ struct SettingsView: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Header
-            Text("PR Status Watcher")
-                .font(.title2.weight(.semibold))
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                // Header
+                Text("PR Status Watcher")
+                    .font(.title2.weight(.semibold))
 
-            Divider()
+                Divider()
 
-            // GitHub Auth Section
-            VStack(alignment: .leading, spacing: 8) {
-                Text("GitHub Authentication")
-                    .font(.headline)
+                // GitHub Auth Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("GitHub Authentication")
+                        .font(.headline)
 
-                AuthStatusView(username: manager.ghUser, style: .detailed)
-            }
+                    AuthStatusView(username: manager.ghUser, style: .detailed)
+                }
 
-            Divider()
+                Divider()
 
-            // Startup Section
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Startup")
-                    .font(.headline)
+                // Startup Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Startup")
+                        .font(.headline)
 
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                    .accessibilityHint("Automatically start the app when you log in")
-                    .onChange(of: launchAtLogin) { newValue in
-                        do {
-                            if newValue {
-                                try SMAppService.mainApp.register()
-                            } else {
-                                try SMAppService.mainApp.unregister()
+                    Toggle("Launch at login", isOn: $launchAtLogin)
+                        .accessibilityHint("Automatically start the app when you log in")
+                        .onChange(of: launchAtLogin) { newValue in
+                            do {
+                                if newValue {
+                                    try SMAppService.mainApp.register()
+                                } else {
+                                    try SMAppService.mainApp.unregister()
+                                }
+                                loginError = nil
+                            } catch {
+                                launchAtLogin = !newValue  // revert toggle
+                                loginError = error.localizedDescription
                             }
-                            loginError = nil
-                        } catch {
-                            launchAtLogin = !newValue  // revert toggle
-                            loginError = error.localizedDescription
+                        }
+                    if let loginError {
+                        Text(loginError)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                    }
+                }
+
+                Divider()
+
+                // Polling Interval Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Refresh Interval")
+                        .font(.headline)
+
+                    Text("How often to check GitHub for PR status updates.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Picker("Interval", selection: $manager.refreshInterval) {
+                        ForEach(intervalOptions, id: \.seconds) { option in
+                            Text(option.label).tag(option.seconds)
                         }
                     }
-                if let loginError {
-                    Text(loginError)
+                    .pickerStyle(.radioGroup)
+                    .accessibilityLabel("Refresh interval")
+                }
+
+                Divider()
+
+                // Review Filters Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Review Filters")
+                        .font(.headline)
+
+                    Text("Hide PRs on the Reviews tab that aren't ready for your review.")
                         .font(.caption)
-                        .foregroundColor(.red)
-                }
-            }
+                        .foregroundColor(.secondary)
 
-            Divider()
-
-            // Polling Interval Section
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Refresh Interval")
-                    .font(.headline)
-
-                Text("How often to check GitHub for PR status updates.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                Picker("Interval", selection: $manager.refreshInterval) {
-                    ForEach(intervalOptions, id: \.seconds) { option in
-                        Text(option.label).tag(option.seconds)
+                    VStack(alignment: .leading, spacing: 6) {
+                        Toggle("Hide draft PRs", isOn: filterBinding(\.hideDrafts))
+                        Toggle("Hide PRs with failing CI", isOn: filterBinding(\.hideCIFailing))
+                        Toggle("Hide PRs with pending CI", isOn: filterBinding(\.hideCIPending))
+                        Toggle("Hide PRs with merge conflicts", isOn: filterBinding(\.hideConflicting))
+                        Toggle("Hide already-approved PRs", isOn: filterBinding(\.hideApproved))
                     }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Review filter toggles")
                 }
-                .pickerStyle(.radioGroup)
-                .accessibilityLabel("Refresh interval")
             }
-
-            Spacer()
+            .padding(24)
         }
-        .padding(24)
         .frame(
-            minWidth: 320, idealWidth: 360, maxWidth: 480,
-            minHeight: 380, idealHeight: 430, maxHeight: 600
+            minWidth: 320, idealWidth: 380, maxWidth: 480,
+            minHeight: 520, idealHeight: 620, maxHeight: 800
+        )
+    }
+
+    private func filterBinding(_ keyPath: WritableKeyPath<FilterSettings, Bool>) -> Binding<Bool> {
+        Binding(
+            get: { manager.filterSettings[keyPath: keyPath] },
+            set: { manager.filterSettings[keyPath: keyPath] = $0 }
         )
     }
 }

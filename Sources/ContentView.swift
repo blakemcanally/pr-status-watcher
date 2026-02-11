@@ -18,9 +18,15 @@ struct ContentView: View {
         }
     }
 
+    /// Active PRs after applying per-tab review filters.
+    private var filteredPRs: [PullRequest] {
+        guard selectedTab == .reviews else { return activePRs }
+        return manager.filterSettings.applyReviewFilters(to: activePRs)
+    }
+
     /// Active PRs grouped by repo, sorted by repo name. Sort within each repo depends on tab.
     private var groupedPRs: [(repo: String, prs: [PullRequest])] {
-        let dict = Dictionary(grouping: activePRs, by: \.repoFullName)
+        let dict = Dictionary(grouping: filteredPRs, by: \.repoFullName)
         let isReviews = selectedTab == .reviews
         return dict.keys.sorted().map { key in
             (repo: key, prs: (dict[key] ?? []).sorted {
@@ -97,8 +103,12 @@ struct ContentView: View {
 
     private var prList: some View {
         Group {
-            if activePRs.isEmpty {
+            if activePRs.isEmpty && !manager.hasCompletedInitialLoad {
+                loadingState
+            } else if activePRs.isEmpty {
                 emptyState
+            } else if filteredPRs.isEmpty {
+                filteredEmptyState
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -221,6 +231,22 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Loading State
+
+    private var loadingState: some View {
+        VStack(spacing: 10) {
+            Spacer()
+            ProgressView()
+                .controlSize(.large)
+            Text("Loading pull requests…")
+                .font(.title3)
+                .foregroundColor(.secondary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("Loading pull requests")
+    }
+
     // MARK: - Empty State
 
     private var emptyState: some View {
@@ -245,6 +271,26 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity)
         .accessibilityLabel(selectedTab == .myPRs ? "No open pull requests" : "No review requests")
+    }
+
+    private var filteredEmptyState: some View {
+        VStack(spacing: 10) {
+            Spacer()
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 32))
+                .foregroundColor(.secondary)
+            Text("All review requests hidden")
+                .font(.title3)
+                .foregroundColor(.secondary)
+            Text("Adjust your review filters in Settings to see more PRs")
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("All review requests hidden by filters")
     }
 
     // MARK: - Footer

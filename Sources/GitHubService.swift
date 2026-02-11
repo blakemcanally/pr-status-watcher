@@ -1,6 +1,11 @@
 import Foundation
-
 // MARK: - GitHub Service (via `gh` CLI)
+
+private func ghLog(_ message: String) {
+    let ts = ISO8601DateFormatter().string(from: Date())
+    print("[\(ts)] GitHubService: \(message)")
+    fflush(stdout)
+}
 
 final class GitHubService: @unchecked Sendable {
     /// Path to the gh binary. Resolved once at init.
@@ -21,7 +26,12 @@ final class GitHubService: @unchecked Sendable {
 
     /// Returns the GitHub username from `gh api user`.
     func currentUser() -> String? {
-        guard let (out, _, exit) = try? run(["api", "user", "--jq", ".login"]) else { return nil }
+        ghLog("currentUser: calling gh api user...")
+        guard let (out, stderr, exit) = try? run(["api", "user", "--jq", ".login"]) else {
+            ghLog("currentUser: gh cli run threw an exception")
+            return nil
+        }
+        ghLog("currentUser: exit=\(exit), stdout=\(out.prefix(200)), stderr=\(stderr.prefix(200))")
         guard exit == 0 else { return nil }
         let username = out.trimmingCharacters(in: .whitespacesAndNewlines)
         return username.isEmpty ? nil : username
@@ -98,9 +108,12 @@ final class GitHubService: @unchecked Sendable {
         }
         """
 
+        ghLog("fetchPRs: running gh api graphql for query: \(searchQuery.prefix(80))")
         let (stdout, stderr, exit) = try run(["api", "graphql", "-f", "query=\(query)"])
 
+        ghLog("fetchPRs: exit=\(exit), stdout_len=\(stdout.count), stderr_len=\(stderr.count)")
         guard exit == 0 else {
+            ghLog("fetchPRs: non-zero exit, stderr=\(stderr.prefix(500))")
             throw GHError.apiError(stderr.isEmpty ? stdout : stderr)
         }
 
@@ -110,12 +123,15 @@ final class GitHubService: @unchecked Sendable {
               let search = dataDict["search"] as? [String: Any],
               let nodes = search["nodes"] as? [[String: Any]]
         else {
+            ghLog("fetchPRs: JSON parsing failed, stdout preview=\(stdout.prefix(500))")
             throw GHError.invalidJSON
         }
 
-        return nodes.compactMap { node -> PullRequest? in
+        let prs = nodes.compactMap { node -> PullRequest? in
             parsePRNode(node)
         }
+        ghLog("fetchPRs: parsed \(prs.count) PRs from \(nodes.count) nodes")
+        return prs
     }
 
     // MARK: - GraphQL Response Parsing
@@ -342,6 +358,11 @@ final class GitHubService: @unchecked Sendable {
     // MARK: - gh CLI Helpers
 
     /// Run a `gh` subcommand synchronously and capture output.
+    ///
+    /// Drains stdout and stderr on background threads to avoid a pipe-buffer
+    /// deadlock: if the subprocess writes more than ~64 KB to a pipe before the
+    /// parent reads it, the write blocks — and if the parent is stuck in
+    /// `waitUntilExit()`, both sides deadlock.
     private func run(_ arguments: [String]) throws -> (stdout: String, stderr: String, exitCode: Int32) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: ghPath)
@@ -357,10 +378,28 @@ final class GitHubService: @unchecked Sendable {
         } catch {
             throw GHError.cliNotFound
         }
-        process.waitUntilExit()
 
-        let stdout = String(data: outPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-        let stderr = String(data: errPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        // Drain both pipes concurrently to prevent pipe-buffer deadlock
+        var outData = Data()
+        var errData = Data()
+        let group = DispatchGroup()
+
+        group.enter()
+        DispatchQueue.global().async {
+            outData = outPipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+        group.enter()
+        DispatchQueue.global().async {
+            errData = errPipe.fileHandleForReading.readDataToEndOfFile()
+            group.leave()
+        }
+
+        process.waitUntilExit()
+        group.wait()
+
+        let stdout = String(data: outData, encoding: .utf8) ?? ""
+        let stderr = String(data: errData, encoding: .utf8) ?? ""
         return (stdout, stderr, process.terminationStatus)
     }
 }
