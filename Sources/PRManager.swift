@@ -22,6 +22,16 @@ final class PRManager: ObservableObject {
         didSet { settingsStore.saveCollapsedRepos(collapsedRepos) }
     }
 
+    /// Toggle a repo's collapsed state. Call from views instead of mutating
+    /// `collapsedRepos` directly, to keep mutation logic in the ViewModel.
+    func toggleRepoCollapsed(_ repo: String) {
+        if collapsedRepos.contains(repo) {
+            collapsedRepos.remove(repo)
+        } else {
+            collapsedRepos.insert(repo)
+        }
+    }
+
     @Published var filterSettings: FilterSettings = FilterSettings() {
         didSet { settingsStore.saveFilterSettings(filterSettings) }
     }
