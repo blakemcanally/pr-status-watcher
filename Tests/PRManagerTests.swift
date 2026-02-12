@@ -88,7 +88,7 @@ import Foundation
         manager.ghUser = nil
         await manager.refreshAll()
 
-        #expect(manager.lastError == "gh not authenticated")
+        #expect(manager.lastError == Strings.Error.ghNotAuthenticated)
     }
 
     @Test func refreshAllFirstLoadSkipsNotifications() async {
@@ -121,7 +121,7 @@ import Foundation
         await manager.refreshAll()
 
         #expect(mockNotifications.sentNotifications.count == 1)
-        #expect(mockNotifications.sentNotifications.first?.title == "CI Failed")
+        #expect(mockNotifications.sentNotifications.first?.title == Strings.Notification.ciFailed)
     }
 
     @Test func refreshAllReviewPRsFailureKeepsExistingData() async {

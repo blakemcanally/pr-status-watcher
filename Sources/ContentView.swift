@@ -56,8 +56,12 @@ struct ContentView: View {
             footer
         }
         .frame(
-            minWidth: 400, idealWidth: 460, maxWidth: 560,
-            minHeight: 400, idealHeight: 520, maxHeight: 700
+            minWidth: AppConstants.Layout.ContentWindow.minWidth,
+            idealWidth: AppConstants.Layout.ContentWindow.idealWidth,
+            maxWidth: AppConstants.Layout.ContentWindow.maxWidth,
+            minHeight: AppConstants.Layout.ContentWindow.minHeight,
+            idealHeight: AppConstants.Layout.ContentWindow.idealHeight,
+            maxHeight: AppConstants.Layout.ContentWindow.maxHeight
         )
     }
 
@@ -75,7 +79,7 @@ struct ContentView: View {
                 }
             }
             .pickerStyle(.segmented)
-            .frame(width: 180)
+            .frame(width: AppConstants.Layout.Header.tabPickerWidth)
             .accessibilityLabel("Tab selection")
 
             Spacer()
@@ -238,7 +242,7 @@ struct ContentView: View {
             Spacer()
             ProgressView()
                 .controlSize(.large)
-            Text("Loading pull requests…")
+            Text(Strings.EmptyState.loadingTitle)
                 .font(.title3)
                 .foregroundColor(.secondary)
             Spacer()
@@ -255,13 +259,13 @@ struct ContentView: View {
             Image(systemName: selectedTab == .myPRs ? "tray" : "eye")
                 .font(.system(size: 32))
                 .foregroundColor(.secondary)
-            Text(selectedTab == .myPRs ? "No open pull requests" : "No review requests")
+            Text(selectedTab == .myPRs ? Strings.EmptyState.noPRsTitle : Strings.EmptyState.noReviewsTitle)
                 .font(.title3)
                 .foregroundColor(.secondary)
             Text(
                 selectedTab == .myPRs
-                    ? "Your open, draft, and queued PRs will appear here automatically"
-                    : "Pull requests where your review is requested will appear here"
+                    ? Strings.EmptyState.noPRsSubtitle
+                    : Strings.EmptyState.noReviewsSubtitle
             )
             .font(.caption)
             .foregroundColor(.secondary)
@@ -279,10 +283,10 @@ struct ContentView: View {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.system(size: 32))
                 .foregroundColor(.secondary)
-            Text("All review requests hidden")
+            Text(Strings.EmptyState.filteredTitle)
                 .font(.title3)
                 .foregroundColor(.secondary)
-            Text("Adjust your review filters in Settings to see more PRs")
+            Text(Strings.EmptyState.filteredSubtitle)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -352,12 +356,12 @@ struct ContentView: View {
     private func refreshFooterLabel(at date: Date) -> String {
         if let next = manager.nextRefreshDate,
            let label = PRStatusSummary.countdownLabel(until: next, now: date) {
-            return "Refreshes in \(label)"
+            return Strings.Refresh.refreshesIn(label)
         }
         if manager.isRefreshing {
-            return "Refreshing…"
+            return Strings.Refresh.refreshing
         }
-        return "Refreshes every \(manager.refreshIntervalLabel)"
+        return Strings.Refresh.refreshesEvery(manager.refreshIntervalLabel)
     }
 
     // MARK: - Actions

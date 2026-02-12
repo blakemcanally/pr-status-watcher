@@ -105,8 +105,12 @@ struct SettingsView: View {
             .padding(24)
         }
         .frame(
-            minWidth: 320, idealWidth: 380, maxWidth: 480,
-            minHeight: 520, idealHeight: 620, maxHeight: 800
+            minWidth: AppConstants.Layout.SettingsWindow.minWidth,
+            idealWidth: AppConstants.Layout.SettingsWindow.idealWidth,
+            maxWidth: AppConstants.Layout.SettingsWindow.maxWidth,
+            minHeight: AppConstants.Layout.SettingsWindow.minHeight,
+            idealHeight: AppConstants.Layout.SettingsWindow.idealHeight,
+            maxHeight: AppConstants.Layout.SettingsWindow.maxHeight
         )
     }
 

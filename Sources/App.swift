@@ -1,13 +1,20 @@
 import SwiftUI
 import UserNotifications
+import os
+
+private let logger = Logger(subsystem: "PRStatusWatcher", category: "App")
 
 // MARK: - App Delegate (hide from Dock, menu-bar only)
 
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        logger.info("applicationDidFinishLaunching: setting activation policy to .accessory")
         NSApplication.shared.setActivationPolicy(.accessory)
         if Bundle.main.bundleIdentifier != nil {
             UNUserNotificationCenter.current().delegate = self
+            logger.info("applicationDidFinishLaunching: notification delegate registered")
+        } else {
+            logger.warning("applicationDidFinishLaunching: no bundle identifier — notifications disabled")
         }
     }
 
@@ -17,9 +24,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
-        if let urlString = response.notification.request.content.userInfo["url"] as? String,
+        if let urlString = response.notification.request.content
+            .userInfo[AppConstants.Notification.urlInfoKey] as? String,
            let url = URL(string: urlString) {
+            logger.info("notification tapped: opening \(urlString, privacy: .public)")
             NSWorkspace.shared.open(url)
+        } else {
+            logger.warning("notification tapped: no valid URL in userInfo")
         }
         completionHandler()
     }
@@ -44,7 +55,7 @@ struct PRStatusWatcherApp: App {
             HStack(spacing: 2) {
                 Image(nsImage: manager.menuBarImage)
                 Text(manager.statusBarSummary)
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .font(.system(size: AppConstants.Layout.MenuBar.statusFontSize, weight: .medium, design: .monospaced))
             }
         }
         .menuBarExtraStyle(.window)

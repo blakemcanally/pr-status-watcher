@@ -9,14 +9,38 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
     private let ghPath: String
 
     init() {
-        // Common install locations
-        let candidates = [
-            "/opt/homebrew/bin/gh",
-            "/usr/local/bin/gh",
-            "/usr/bin/gh"
-        ]
-        self.ghPath = candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
-            ?? "gh" // fallback to PATH lookup
+        // Stage 1: Check known install locations (fastest)
+        if let known = AppConstants.GitHub.knownBinaryPaths
+            .first(where: { FileManager.default.isExecutableFile(atPath: $0) }) {
+            self.ghPath = known
+            logger.info("init: gh found at known path: \(known, privacy: .public)")
+            return
+        }
+
+        // Stage 2: Search PATH
+        if let pathResolved = Self.resolveFromPATH("gh") {
+            self.ghPath = pathResolved
+            logger.info("init: gh found via PATH: \(pathResolved, privacy: .public)")
+            return
+        }
+
+        // Fallback: bare "gh" and hope Process can find it
+        self.ghPath = "gh"
+        logger.warning("init: gh not found at known paths or in PATH, falling back to bare 'gh'")
+    }
+
+    /// Search the system PATH for an executable by name.
+    /// Returns the full path if found, nil otherwise.
+    static func resolveFromPATH(_ binary: String) -> String? {
+        guard let pathEnv = ProcessInfo.processInfo.environment["PATH"] else { return nil }
+        let directories = pathEnv.split(separator: ":").map(String.init)
+        for dir in directories {
+            let candidate = (dir as NSString).appendingPathComponent(binary)
+            if FileManager.default.isExecutableFile(atPath: candidate) {
+                return candidate
+            }
+        }
+        return nil
     }
 
     // MARK: - Public API
@@ -24,15 +48,25 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
     /// Returns the GitHub username from `gh api user`.
     func currentUser() -> String? {
         logger.info("currentUser: resolving via gh api user")
-        guard let (out, stderr, exit) = try? run(["api", "user", "--jq", ".login"]) else {
-            logger.error("currentUser: gh cli failed to launch")
+        let output: (stdout: String, stderr: String, exitCode: Int32)
+        do {
+            output = try run(["api", "user", "--jq", ".login"])
+        } catch GHError.cliNotFound {
+            logger.error("currentUser: gh CLI not found at path '\(self.ghPath, privacy: .public)'")
+            return nil
+        } catch GHError.timeout {
+            logger.error("currentUser: gh CLI timed out during user resolution")
+            return nil
+        } catch {
+            logger.error("currentUser: unexpected error: \(error.localizedDescription, privacy: .public)")
             return nil
         }
-        if exit != 0 {
-            logger.error("currentUser: exit=\(exit), stderr=\(stderr.prefix(200), privacy: .public)")
+        if output.exitCode != 0 {
+            logger.error("currentUser: exit=\(output.exitCode), stderr=\(output.stderr.prefix(200), privacy: .public)")
         }
-        guard exit == 0 else { return nil }
-        let username = out.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard output.exitCode == 0 else { return nil }
+        let username = output.stdout.trimmingCharacters(in: .whitespacesAndNewlines)
+        logger.info("currentUser: resolved to '\(username, privacy: .public)'")
         return username.isEmpty ? nil : username
     }
 
@@ -126,7 +160,11 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         }
 
         let prs = nodes.compactMap { node -> PullRequest? in
-            parsePRNode(node)
+            guard let pr = parsePRNode(node) else {
+                logger.debug("fetchPRs: skipping malformed node (number=\(node["number"] as? Int ?? -1))")
+                return nil
+            }
+            return pr
         }
         logger.info("fetchPRs: parsed \(prs.count) PRs from \(nodes.count) nodes")
         return prs
@@ -355,7 +393,7 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
 
     // MARK: - gh CLI Helpers
 
-    private static let processTimeout: TimeInterval = 30
+    private static let processTimeout: TimeInterval = AppConstants.GitHub.processTimeoutSeconds
 
     /// Run a `gh` subcommand synchronously and capture output.
     ///
@@ -409,7 +447,7 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
             logger.error("run: gh process timed out after \(Self.processTimeout)s, terminating")
             process.terminate()
             // Give it a moment to clean up, then force-kill if needed
-            DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + AppConstants.GitHub.terminationGracePeriod) {
                 if process.isRunning { process.terminate() }
             }
             throw GHError.timeout
@@ -435,14 +473,14 @@ enum GHError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .cliNotFound:
-            return "GitHub CLI (gh) not found — install it with: brew install gh"
+            return Strings.Error.ghCliNotFound
         case .apiError(let msg):
             let trimmed = msg.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? "GitHub API error" : trimmed
+            return trimmed.isEmpty ? Strings.Error.ghApiErrorFallback : trimmed
         case .invalidJSON:
-            return "Invalid response from GitHub API"
+            return Strings.Error.ghInvalidJSON
         case .timeout:
-            return "GitHub CLI timed out — check your network connection"
+            return Strings.Error.ghTimeout
         }
     }
 }

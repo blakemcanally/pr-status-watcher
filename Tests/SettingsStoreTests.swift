@@ -97,4 +97,10 @@ import Foundation
         store.saveFilterSettings(settings)
         #expect(store.loadFilterSettings() == settings)
     }
+
+    @Test func loadFilterSettingsWithWrongTypeReturnsDefault() {
+        // Store an Int where we expect Data — SettingsStore should handle gracefully
+        defaults.set(42, forKey: SettingsStore.filterSettingsKey)
+        #expect(store.loadFilterSettings() == FilterSettings())
+    }
 }

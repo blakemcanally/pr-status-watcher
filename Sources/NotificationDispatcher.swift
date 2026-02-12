@@ -1,5 +1,8 @@
 import Foundation
 import UserNotifications
+import os
+
+private let logger = Logger(subsystem: "PRStatusWatcher", category: "NotificationDispatcher")
 
 // MARK: - Notification Dispatcher
 
@@ -11,20 +14,32 @@ final class NotificationDispatcher: NotificationServiceProtocol {
     }
 
     func requestPermission() {
-        guard isAvailable else { return }
+        guard isAvailable else {
+            logger.info("requestPermission: skipped — no bundle identifier")
+            return
+        }
         UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .sound]
-        ) { _, _ in }
+        ) { granted, error in
+            if let error {
+                logger.error("requestPermission: failed: \(error.localizedDescription, privacy: .public)")
+            } else {
+                logger.info("requestPermission: granted=\(granted)")
+            }
+        }
     }
 
     func send(title: String, body: String, url: URL?) {
-        guard isAvailable else { return }
+        guard isAvailable else {
+            logger.debug("send: skipped — no bundle identifier")
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
         if let url {
-            content.userInfo = ["url": url.absoluteString]
+            content.userInfo = [AppConstants.Notification.urlInfoKey: url.absoluteString]
         }
 
         let request = UNNotificationRequest(
@@ -32,6 +47,12 @@ final class NotificationDispatcher: NotificationServiceProtocol {
             content: content,
             trigger: nil
         )
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error {
+                logger.error("send: delivery failed: \(error.localizedDescription, privacy: .public)")
+            } else {
+                logger.debug("send: delivered '\(title, privacy: .public)'")
+            }
+        }
     }
 }

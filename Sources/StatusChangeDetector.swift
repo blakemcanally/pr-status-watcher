@@ -30,16 +30,20 @@ struct StatusChangeDetector {
 
             if oldStatus == .pending && pr.ciStatus == .failure {
                 notifications.append(StatusNotification(
-                    title: "CI Failed",
-                    body: "\(pr.repoFullName) \(pr.displayNumber): \(pr.title)",
+                    title: Strings.Notification.ciFailed,
+                    body: Strings.Notification.ciStatusBody(
+                        repo: pr.repoFullName, number: pr.displayNumber, title: pr.title
+                    ),
                     url: pr.url
                 ))
             }
 
             if oldStatus == .pending && pr.ciStatus == .success {
                 notifications.append(StatusNotification(
-                    title: "All Checks Passed",
-                    body: "\(pr.repoFullName) \(pr.displayNumber): \(pr.title)",
+                    title: Strings.Notification.allChecksPassed,
+                    body: Strings.Notification.ciStatusBody(
+                        repo: pr.repoFullName, number: pr.displayNumber, title: pr.title
+                    ),
                     url: pr.url
                 ))
             }
@@ -48,8 +52,8 @@ struct StatusChangeDetector {
         let disappeared = previousPRIds.subtracting(newIds)
         for id in disappeared {
             notifications.append(StatusNotification(
-                title: "PR No Longer Open",
-                body: "\(id) was merged or closed",
+                title: Strings.Notification.prNoLongerOpen,
+                body: Strings.Notification.prClosedBody(id: id),
                 url: nil
             ))
         }

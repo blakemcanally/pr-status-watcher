@@ -191,3 +191,50 @@ import Testing
         #expect(pr?.state == .draft)
     }
 }
+
+// MARK: - GHError Description Tests
+
+@Suite struct GHErrorDescriptionTests {
+    @Test func cliNotFoundUsesStringsConstant() {
+        #expect(GHError.cliNotFound.errorDescription == Strings.Error.ghCliNotFound)
+    }
+
+    @Test func timeoutUsesStringsConstant() {
+        #expect(GHError.timeout.errorDescription == Strings.Error.ghTimeout)
+    }
+
+    @Test func invalidJSONUsesStringsConstant() {
+        #expect(GHError.invalidJSON.errorDescription == Strings.Error.ghInvalidJSON)
+    }
+
+    @Test func apiErrorReturnsCustomMessage() {
+        let error = GHError.apiError("rate limit exceeded")
+        #expect(error.errorDescription == "rate limit exceeded")
+    }
+
+    @Test func apiErrorEmptyReturnsFallback() {
+        let error = GHError.apiError("")
+        #expect(error.errorDescription == Strings.Error.ghApiErrorFallback)
+    }
+
+    @Test func apiErrorWhitespaceReturnsFallback() {
+        let error = GHError.apiError("  \n  ")
+        #expect(error.errorDescription == Strings.Error.ghApiErrorFallback)
+    }
+}
+
+// MARK: - PATH Resolution Tests
+
+@Suite struct GitHubServicePATHResolutionTests {
+    @Test func resolveFromPATHFindsCommonBinary() {
+        // "ls" is universally available on macOS
+        let result = GitHubService.resolveFromPATH("ls")
+        #expect(result != nil)
+        #expect(result?.hasSuffix("/ls") == true)
+    }
+
+    @Test func resolveFromPATHReturnsNilForNonexistent() {
+        let result = GitHubService.resolveFromPATH("definitely_not_a_binary_xyz_123")
+        #expect(result == nil)
+    }
+}

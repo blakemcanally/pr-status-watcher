@@ -123,17 +123,17 @@ struct PRRowView: View {
         case .open:
             if pullRequest.isInMergeQueue {
                 if let pos = pullRequest.queuePosition {
-                    return "Queue #\(pos)"
+                    return Strings.PRState.queuePosition(pos)
                 }
-                return "Merge Queue"
+                return Strings.PRState.mergeQueue
             }
-            return "Open"
+            return Strings.PRState.open
         case .closed:
-            return "Closed"
+            return Strings.PRState.closed
         case .merged:
-            return "Merged"
+            return Strings.PRState.merged
         case .draft:
-            return "Draft"
+            return Strings.PRState.draft
         }
     }
 
@@ -143,11 +143,11 @@ struct PRRowView: View {
     private var reviewBadge: some View {
         switch pullRequest.reviewDecision {
         case .approved:
-            badgePill(icon: "checkmark.circle.fill", text: "Approved", color: .green)
+            badgePill(icon: "checkmark.circle.fill", text: Strings.Review.approved, color: .green)
         case .changesRequested:
-            badgePill(icon: "exclamationmark.circle.fill", text: "Changes", color: .red)
+            badgePill(icon: "exclamationmark.circle.fill", text: Strings.Review.changesRequested, color: .red)
         case .reviewRequired:
-            badgePill(icon: "eye.fill", text: "Review", color: .orange)
+            badgePill(icon: "eye.fill", text: Strings.Review.reviewRequired, color: .orange)
         case .none:
             EmptyView()
         }
@@ -158,7 +158,7 @@ struct PRRowView: View {
     @ViewBuilder
     private var conflictBadge: some View {
         if pullRequest.mergeable == .conflicting {
-            badgePill(icon: "exclamationmark.triangle.fill", text: "Conflicts", color: .red)
+            badgePill(icon: "exclamationmark.triangle.fill", text: Strings.Merge.conflicts, color: .red)
         }
     }
 
@@ -202,13 +202,13 @@ struct PRRowView: View {
 
     private var ciText: String {
         if pullRequest.checksFailed > 0 {
-            return "\(pullRequest.checksFailed) failed"
+            return Strings.CI.failedCount(pullRequest.checksFailed)
         }
         let pending = pullRequest.checksTotal - pullRequest.checksPassed - pullRequest.checksFailed
         if pending > 0 {
-            return "\(pullRequest.checksPassed)/\(pullRequest.checksTotal) checks"
+            return Strings.CI.checksProgress(passed: pullRequest.checksPassed, total: pullRequest.checksTotal)
         }
-        return "\(pullRequest.checksPassed)/\(pullRequest.checksTotal) passed"
+        return Strings.CI.checksPassed(passed: pullRequest.checksPassed, total: pullRequest.checksTotal)
     }
 
     // MARK: - Badge Helper
