@@ -402,6 +402,58 @@ extension PRNode.CheckContext {
         let error = GHError.apiError("  \n  ")
         #expect(error.errorDescription == Strings.Error.ghApiErrorFallback)
     }
+
+    @Test func processLaunchFailedDescription() {
+        let error = GHError.processLaunchFailed("Permission denied")
+        #expect(error.errorDescription == Strings.Error.ghProcessLaunchFailed("Permission denied"))
+        #expect(error.errorDescription?.contains("Permission denied") == true)
+        #expect(error.errorDescription?.contains("Failed to launch") == true)
+    }
+}
+
+// MARK: - extractRollupData
+
+@Suite struct ExtractRollupDataTests {
+    let service = GitHubService()
+
+    @Test func extractRollupDataValid() {
+        let node = PRNode.fixture(
+            commits: PRNode.CommitConnection(nodes: [
+                PRNode.CommitNode(commit: PRNode.CommitRef(
+                    statusCheckRollup: PRNode.StatusCheckRollup(
+                        state: "SUCCESS",
+                        contexts: PRNode.CheckContextConnection(
+                            totalCount: 2,
+                            nodes: [
+                                .fixture(name: "build", status: "COMPLETED", conclusion: "SUCCESS"),
+                                .fixture(name: "test", status: "COMPLETED", conclusion: "SUCCESS"),
+                            ]
+                        )
+                    )
+                ))
+            ])
+        )
+        let result = service.extractRollupData(from: node)
+        #expect(result != nil)
+        #expect(result?.totalCount == 2)
+        #expect(result?.contextNodes.count == 2)
+    }
+
+    @Test func extractRollupDataMissingRollup() {
+        let node = PRNode.fixture(
+            commits: PRNode.CommitConnection(nodes: [
+                PRNode.CommitNode(commit: PRNode.CommitRef(statusCheckRollup: nil))
+            ])
+        )
+        #expect(service.extractRollupData(from: node) == nil)
+    }
+
+    @Test func extractRollupDataEmptyCommits() {
+        let node = PRNode.fixture(
+            commits: PRNode.CommitConnection(nodes: nil)
+        )
+        #expect(service.extractRollupData(from: node) == nil)
+    }
 }
 
 // MARK: - PATH Resolution Tests

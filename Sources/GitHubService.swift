@@ -4,7 +4,9 @@ import os
 
 private let logger = Logger(subsystem: "PRStatusWatcher", category: "GitHubService")
 
-final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
+/// Thread-safe: all stored properties are `let` and `Sendable`.
+/// If mutable state is ever added, convert to `actor` instead of using `@unchecked`.
+final class GitHubService: GitHubServiceProtocol, Sendable {
     /// Path to the gh binary. Resolved once at init.
     private let ghPath: String
 
@@ -89,12 +91,127 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
-    /// Fetch PRs matching an arbitrary GitHub search query string.
+    /// Maximum number of pages to fetch before stopping (1000 PRs at 100/page).
+    private static let maxPages = 10
+
+    /// Fetch PRs matching an arbitrary GitHub search query string, with cursor-based pagination.
     private func fetchPRs(searchQuery: String) throws -> [PullRequest] {
         let escapedQuery = escapeForGraphQL(searchQuery)
-        let query = """
+        var allPRs: [PullRequest] = []
+        var cursor: String?
+        var pageCount = 0
+
+        repeat {
+            pageCount += 1
+            if pageCount > Self.maxPages {
+                logger.warning("fetchPRs: reached max page limit (\(Self.maxPages)), stopping pagination")
+                break
+            }
+
+            let page = try fetchPRPage(
+                escapedQuery: escapedQuery,
+                cursor: cursor,
+                searchQuery: searchQuery
+            )
+            allPRs.append(contentsOf: page.prs)
+
+            logger.info(
+                "fetchPRs: parsed \(page.prs.count) PRs from page \(pageCount) (total: \(allPRs.count))"
+            )
+
+            cursor = page.nextCursor
+        } while cursor != nil
+
+        return allPRs
+    }
+
+    /// Result of fetching a single page of PR search results.
+    private struct PRPageResult {
+        let prs: [PullRequest]
+        let nextCursor: String?
+    }
+
+    /// Build the GraphQL query for a single page and parse the response.
+    private func fetchPRPage(
+        escapedQuery: String,
+        cursor: String?,
+        searchQuery: String
+    ) throws -> PRPageResult {
+        let pageSize = 100
+        let afterClause = cursor.map { #", after: \"\#($0)\""# } ?? ""
+        let query = buildSearchQuery(
+            escapedQuery: escapedQuery,
+            pageSize: pageSize,
+            afterClause: afterClause
+        )
+
+        logger.info(
+            "fetchPRs: query=\(searchQuery.prefix(80), privacy: .public), cursor=\(cursor ?? "nil", privacy: .public)"
+        )
+        let (stdout, stderr, exit) = try run(["api", "graphql", "-f", "query=\(query)"])
+
+        guard exit == 0 else {
+            logger.error("fetchPRs: exit=\(exit), stderr=\(stderr.prefix(500), privacy: .public)")
+            throw GHError.apiError(stderr.isEmpty ? stdout : stderr)
+        }
+
+        guard let data = stdout.data(using: .utf8) else {
+            logger.error("fetchPRs: failed to convert stdout to Data")
+            throw GHError.invalidJSON
+        }
+
+        let response: GraphQLResponse
+        do {
+            response = try JSONDecoder().decode(GraphQLResponse.self, from: data)
+        } catch {
+            logger.error("fetchPRs: JSON decode failed: \(error.localizedDescription, privacy: .public)")
+            throw GHError.invalidJSON
+        }
+
+        // Surface GraphQL errors (rate limits, schema errors, partial failures)
+        if let errors = response.errors, let first = errors.first {
+            logger.error("fetchPRs: GraphQL error: \(first.message, privacy: .public)")
+            throw GHError.apiError(first.message)
+        }
+
+        guard let searchResult = response.data?.search else {
+            logger.error("fetchPRs: missing data.search in response")
+            throw GHError.invalidJSON
+        }
+
+        var skippedCount = 0
+        let prs = searchResult.nodes.compactMap { node -> PullRequest? in
+            guard let parsed = convertNode(node) else {
+                skippedCount += 1
+                let nodeNum = node.number.map(String.init) ?? "nil"
+                let nodeTitle = node.title?.prefix(50).description ?? "nil"
+                logger.warning(
+                    "fetchPRs: skipping malformed node (number=\(nodeNum, privacy: .public), title=\"\(nodeTitle, privacy: .public)\")"
+                )
+                return nil
+            }
+            return parsed
+        }
+
+        if skippedCount > 0 {
+            logger.warning("fetchPRs: skipped \(skippedCount) malformed nodes out of \(searchResult.nodes.count)")
+        }
+
+        let hasNextPage = searchResult.pageInfo?.hasNextPage ?? false
+        let nextCursor = hasNextPage ? searchResult.pageInfo?.endCursor : nil
+
+        return PRPageResult(prs: prs, nextCursor: nextCursor)
+    }
+
+    /// Build the GraphQL search query string for a single page.
+    private func buildSearchQuery(escapedQuery: String, pageSize: Int, afterClause: String) -> String {
+        """
         query {
-          search(query: "\(escapedQuery)", type: ISSUE, first: 100) {
+          search(query: "\(escapedQuery)", type: ISSUE, first: \(pageSize)\(afterClause)) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
             nodes {
               ... on PullRequest {
                 number
@@ -140,56 +257,6 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
           }
         }
         """
-
-        logger.info("fetchPRs: query=\(searchQuery.prefix(80), privacy: .public)")
-        let (stdout, stderr, exit) = try run(["api", "graphql", "-f", "query=\(query)"])
-
-        guard exit == 0 else {
-            logger.error("fetchPRs: exit=\(exit), stderr=\(stderr.prefix(500), privacy: .public)")
-            throw GHError.apiError(stderr.isEmpty ? stdout : stderr)
-        }
-
-        guard let data = stdout.data(using: .utf8) else {
-            logger.error("fetchPRs: failed to convert stdout to Data")
-            throw GHError.invalidJSON
-        }
-
-        let response: GraphQLResponse
-        do {
-            response = try JSONDecoder().decode(GraphQLResponse.self, from: data)
-        } catch {
-            logger.error("fetchPRs: JSON decode failed: \(error.localizedDescription, privacy: .public)")
-            throw GHError.invalidJSON
-        }
-
-        // Surface GraphQL errors (rate limits, schema errors, partial failures)
-        if let errors = response.errors, let first = errors.first {
-            logger.error("fetchPRs: GraphQL error: \(first.message, privacy: .public)")
-            throw GHError.apiError(first.message)
-        }
-
-        guard let nodes = response.data?.search.nodes else {
-            logger.error("fetchPRs: missing data.search.nodes in response")
-            throw GHError.invalidJSON
-        }
-
-        var skippedCount = 0
-        let prs = nodes.compactMap { node -> PullRequest? in
-            guard let pr = convertNode(node) else {
-                skippedCount += 1
-                let nodeNum = node.number.map(String.init) ?? "nil"
-                let nodeTitle = node.title?.prefix(50).description ?? "nil"
-                logger.warning("fetchPRs: skipping malformed node (number=\(nodeNum, privacy: .public), title=\"\(nodeTitle, privacy: .public)\")")
-                return nil
-            }
-            return pr
-        }
-
-        if skippedCount > 0 {
-            logger.warning("fetchPRs: skipped \(skippedCount) malformed nodes out of \(nodes.count)")
-        }
-        logger.info("fetchPRs: parsed \(prs.count) PRs from \(nodes.count) nodes")
-        return prs
     }
 
     // MARK: - Node Conversion (Codable → PullRequest)
@@ -316,6 +383,12 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
               let contexts = rollup.contexts
         else { return nil }
 
+        if contexts.totalCount > contexts.nodes.count {
+            logger.warning(
+                "extractRollupData: check contexts truncated — \(contexts.nodes.count)/\(contexts.totalCount) fetched"
+            )
+        }
+
         return TypedRollupData(
             rollupState: rollup.state,
             totalCount: contexts.totalCount,
@@ -433,8 +506,13 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         do {
             try process.run()
         } catch {
-            throw GHError.cliNotFound
+            logger.error("run: process launch failed: \(error.localizedDescription, privacy: .public)")
+            throw GHError.processLaunchFailed(error.localizedDescription)
         }
+
+        // Close write ends in parent to ensure EOF when child exits
+        outPipe.fileHandleForWriting.closeFile()
+        errPipe.fileHandleForWriting.closeFile()
 
         // Drain both pipes concurrently to prevent pipe-buffer deadlock
         var outData = Data()
@@ -485,6 +563,7 @@ enum GHError: LocalizedError {
     case apiError(String)
     case invalidJSON
     case timeout
+    case processLaunchFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -497,6 +576,8 @@ enum GHError: LocalizedError {
             return Strings.Error.ghInvalidJSON
         case .timeout:
             return Strings.Error.ghTimeout
+        case .processLaunchFailed(let detail):
+            return Strings.Error.ghProcessLaunchFailed(detail)
         }
     }
 }
