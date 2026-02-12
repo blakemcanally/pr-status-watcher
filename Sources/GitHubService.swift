@@ -4,7 +4,9 @@ import os
 
 private let logger = Logger(subsystem: "PRStatusWatcher", category: "GitHubService")
 
-final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
+/// Thread-safe: all stored properties are `let` and `Sendable`.
+/// If mutable state is ever added, convert to `actor` instead of using `@unchecked`.
+final class GitHubService: GitHubServiceProtocol, Sendable {
     /// Path to the gh binary. Resolved once at init.
     private let ghPath: String
 
@@ -24,8 +26,16 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
     /// Returns the GitHub username from `gh api user`.
     func currentUser() -> String? {
         logger.info("currentUser: resolving via gh api user")
-        guard let (out, stderr, exit) = try? run(["api", "user", "--jq", ".login"]) else {
-            logger.error("currentUser: gh cli failed to launch")
+        let out: String
+        let stderr: String
+        let exit: Int32
+        do {
+            (out, stderr, exit) = try run(["api", "user", "--jq", ".login"])
+        } catch let error as GHError {
+            logger.error("currentUser: \(error.localizedDescription, privacy: .public)")
+            return nil
+        } catch {
+            logger.error("currentUser: unexpected error: \(error.localizedDescription, privacy: .public)")
             return nil
         }
         if exit != 0 {
@@ -48,6 +58,9 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
 
     // MARK: - Shared Fetch
 
+    /// Maximum number of pages to fetch before stopping (1000 PRs at 100/page).
+    private static let maxPages = 10
+
     /// Escape special characters for safe interpolation into a GraphQL/JSON string literal.
     private func escapeForGraphQL(_ value: String) -> String {
         value
@@ -55,12 +68,86 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
 
-    /// Fetch PRs matching an arbitrary GitHub search query string.
+    /// Fetch PRs matching an arbitrary GitHub search query string, with cursor-based pagination.
     private func fetchPRs(searchQuery: String) throws -> [PullRequest] {
         let escapedQuery = escapeForGraphQL(searchQuery)
-        let query = """
+        var allPRs: [PullRequest] = []
+        var cursor: String?
+        var pageCount = 0
+
+        repeat {
+            pageCount += 1
+            if pageCount > Self.maxPages {
+                logger.warning("fetchPRs: reached max page limit (\(Self.maxPages)), stopping pagination")
+                break
+            }
+
+            let page = try fetchPRPage(escapedQuery: escapedQuery, cursor: cursor, searchQuery: searchQuery)
+            allPRs.append(contentsOf: page.prs)
+
+            logger.info(
+                "fetchPRs: parsed \(page.prs.count) PRs from page \(pageCount) (total: \(allPRs.count))"
+            )
+
+            cursor = page.nextCursor
+        } while cursor != nil
+
+        return allPRs
+    }
+
+    /// Result of fetching a single page of PR search results.
+    private struct PRPageResult {
+        let prs: [PullRequest]
+        let nextCursor: String?
+    }
+
+    /// Build the GraphQL query for a single page and parse the response.
+    private func fetchPRPage(
+        escapedQuery: String,
+        cursor: String?,
+        searchQuery: String
+    ) throws -> PRPageResult {
+        let pageSize = 100
+        let afterClause = cursor.map { #", after: "\#($0)""# } ?? ""
+        let query = buildSearchQuery(escapedQuery: escapedQuery, pageSize: pageSize, afterClause: afterClause)
+
+        logger.info(
+            "fetchPRs: query=\(searchQuery.prefix(80), privacy: .public), cursor=\(cursor ?? "nil", privacy: .public)"
+        )
+        let (stdout, stderr, exit) = try run(["api", "graphql", "-f", "query=\(query)"])
+
+        guard exit == 0 else {
+            logger.error("fetchPRs: exit=\(exit), stderr=\(stderr.prefix(500), privacy: .public)")
+            throw GHError.apiError(stderr.isEmpty ? stdout : stderr)
+        }
+
+        let search = try parseGraphQLSearchResponse(stdout)
+
+        let nodes = search["nodes"] as? [[String: Any]] ?? []
+        let prs = nodes.compactMap { node -> PullRequest? in
+            guard let parsed = parsePRNode(node) else {
+                logger.debug("fetchPRs: skipping malformed PR node: \(String(describing: node["number"]))")
+                return nil
+            }
+            return parsed
+        }
+
+        let pageInfo = search["pageInfo"] as? [String: Any]
+        let hasNextPage = pageInfo?["hasNextPage"] as? Bool ?? false
+        let nextCursor = hasNextPage ? (pageInfo?["endCursor"] as? String) : nil
+
+        return PRPageResult(prs: prs, nextCursor: nextCursor)
+    }
+
+    /// Build the GraphQL search query string for a single page.
+    private func buildSearchQuery(escapedQuery: String, pageSize: Int, afterClause: String) -> String {
+        """
         query {
-          search(query: "\(escapedQuery)", type: ISSUE, first: 100) {
+          search(query: "\(escapedQuery)", type: ISSUE, first: \(pageSize)\(afterClause)) {
+            pageInfo {
+              hasNextPage
+              endCursor
+            }
             nodes {
               ... on PullRequest {
                 number
@@ -106,30 +193,33 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
           }
         }
         """
+    }
 
-        logger.info("fetchPRs: query=\(searchQuery.prefix(80), privacy: .public)")
-        let (stdout, stderr, exit) = try run(["api", "graphql", "-f", "query=\(query)"])
-
-        guard exit == 0 else {
-            logger.error("fetchPRs: exit=\(exit), stderr=\(stderr.prefix(500), privacy: .public)")
-            throw GHError.apiError(stderr.isEmpty ? stdout : stderr)
-        }
-
+    /// Parse a GraphQL response string into the `search` dictionary, surfacing errors.
+    private func parseGraphQLSearchResponse(_ stdout: String) throws -> [String: Any] {
         guard let data = stdout.data(using: .utf8),
-              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let dataDict = json["data"] as? [String: Any],
-              let search = dataDict["search"] as? [String: Any],
-              let nodes = search["nodes"] as? [[String: Any]]
+              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
             logger.error("fetchPRs: failed to parse JSON response")
             throw GHError.invalidJSON
         }
 
-        let prs = nodes.compactMap { node -> PullRequest? in
-            parsePRNode(node)
+        // Surface GraphQL errors (rate limits, schema errors, auth failures)
+        if let errors = json["errors"] as? [[String: Any]],
+           let firstError = errors.first,
+           let message = firstError["message"] as? String {
+            logger.error("fetchPRs: GraphQL error: \(message, privacy: .public)")
+            throw GHError.apiError(message)
         }
-        logger.info("fetchPRs: parsed \(prs.count) PRs from \(nodes.count) nodes")
-        return prs
+
+        guard let dataDict = json["data"] as? [String: Any],
+              let search = dataDict["search"] as? [String: Any]
+        else {
+            logger.error("fetchPRs: unexpected JSON structure")
+            throw GHError.invalidJSON
+        }
+
+        return search
     }
 
     // MARK: - GraphQL Response Parsing
@@ -264,6 +354,12 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
               let contextNodes = contexts["nodes"] as? [[String: Any]]
         else { return nil }
 
+        if totalCount > contextNodes.count {
+            logger.warning(
+                "extractRollupData: check contexts truncated — \(contextNodes.count)/\(totalCount) fetched"
+            )
+        }
+
         return RollupData(rollup: rollup, totalCount: totalCount, contextNodes: contextNodes)
     }
 
@@ -379,8 +475,13 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         do {
             try process.run()
         } catch {
-            throw GHError.cliNotFound
+            logger.error("run: process launch failed: \(error.localizedDescription, privacy: .public)")
+            throw GHError.processLaunchFailed(error.localizedDescription)
         }
+
+        // Close write ends in parent to ensure EOF when child exits
+        outPipe.fileHandleForWriting.closeFile()
+        errPipe.fileHandleForWriting.closeFile()
 
         // Drain both pipes concurrently to prevent pipe-buffer deadlock
         var outData = Data()
@@ -431,6 +532,7 @@ enum GHError: LocalizedError {
     case apiError(String)
     case invalidJSON
     case timeout
+    case processLaunchFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -443,6 +545,8 @@ enum GHError: LocalizedError {
             return "Invalid response from GitHub API"
         case .timeout:
             return "GitHub CLI timed out — check your network connection"
+        case .processLaunchFailed(let detail):
+            return "Failed to launch GitHub CLI: \(detail)"
         }
     }
 }

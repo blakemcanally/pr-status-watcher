@@ -249,6 +249,97 @@ import Foundation
         #expect(mockSettings.collapsedRepos == ["org/repo"])
     }
 
+    // MARK: - Large Result Sets
+
+    @Test func refreshAllHandlesLargeResultSet() async {
+        // Simulate a user with >100 PRs (post-pagination, all results returned)
+        let prs = (1...150).map { PullRequest.fixture(number: $0) }
+        mockService.myPRsResult = .success(prs)
+        mockService.reviewPRsResult = .success([])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.pullRequests.count == 150)
+        #expect(manager.lastError == nil)
+    }
+
+    // MARK: - Error Type Propagation
+
+    @Test func graphQLApiErrorSurfaced() async {
+        mockService.myPRsResult = .failure(GHError.apiError("API rate limit exceeded"))
+        mockService.reviewPRsResult = .success([])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.lastError?.contains("rate limit exceeded") == true)
+    }
+
+    @Test func processLaunchFailedSurfaced() async {
+        mockService.myPRsResult = .failure(GHError.processLaunchFailed("Permission denied"))
+        mockService.reviewPRsResult = .success([])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.lastError?.contains("Failed to launch") == true)
+    }
+
+    @Test func invalidJSONErrorSurfaced() async {
+        mockService.myPRsResult = .failure(GHError.invalidJSON)
+        mockService.reviewPRsResult = .success([])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.lastError?.contains("Invalid response") == true)
+    }
+
+    // MARK: - Menu Bar Image Caching
+
+    @Test func menuBarImageUpdatesOnPullRequestsChange() async {
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+
+        // Initial state: no PRs
+        let initialImage = manager.menuBarImage
+
+        // Add a failing PR
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(number: 1, ciStatus: .failure),
+        ])
+        mockService.reviewPRsResult = .success([])
+        await manager.refreshAll()
+
+        // Image should have changed (now has failure badge)
+        #expect(manager.menuBarImage !== initialImage)
+    }
+
+    @Test func menuBarImageStableWhenStatusUnchanged() async {
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+
+        // First refresh with success PRs
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(number: 1, ciStatus: .success),
+        ])
+        mockService.reviewPRsResult = .success([])
+        await manager.refreshAll()
+
+        let imageAfterFirst = manager.menuBarImage
+
+        // Second refresh with same status
+        await manager.refreshAll()
+
+        // Image should be the same object (not regenerated)
+        #expect(manager.menuBarImage === imageAfterFirst)
+    }
+
     // MARK: - Delegated Properties
 
     @Test func notificationsAvailableDelegatesToService() {

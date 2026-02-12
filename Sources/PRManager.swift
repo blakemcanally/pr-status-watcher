@@ -103,11 +103,30 @@ final class PRManager: ObservableObject {
         PRStatusSummary.statusBarSummary(for: pullRequests, reviewPRs: reviewPRs)
     }
 
-    /// Menu bar image with a red badge dot when CI is failing.
-    var menuBarImage: NSImage {
-        let symbolName = overallStatusIcon
+    /// Cached menu bar image — only regenerated when visual inputs change.
+    @Published private(set) var menuBarImage: NSImage = NSImage(
+        systemSymbolName: "arrow.triangle.pull",
+        accessibilityDescription: "PR Status"
+    ) ?? NSImage()
+
+    /// Tracks the last inputs used to build the cached image, to avoid redundant rebuilds.
+    private var lastMenuBarIcon: String = ""
+    private var lastMenuBarHasFailure: Bool = false
+
+    /// Rebuild the menu bar image if the visual inputs have changed.
+    private func updateMenuBarImageIfNeeded() {
+        let icon = overallStatusIcon
+        let failure = hasFailure
+        guard icon != lastMenuBarIcon || failure != lastMenuBarHasFailure else { return }
+        lastMenuBarIcon = icon
+        lastMenuBarHasFailure = failure
+        menuBarImage = buildMenuBarImage(icon: icon, hasFailure: failure)
+    }
+
+    /// Build the menu bar NSImage for a given icon and failure state.
+    private func buildMenuBarImage(icon: String, hasFailure: Bool) -> NSImage {
         let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-        let base = NSImage(systemSymbolName: symbolName, accessibilityDescription: "PR Status")?
+        let base = NSImage(systemSymbolName: icon, accessibilityDescription: "PR Status")?
             .withSymbolConfiguration(config) ?? NSImage()
 
         guard hasFailure else {
@@ -121,7 +140,6 @@ final class PRManager: ObservableObject {
         // Composite the icon with a red badge dot
         let size = NSSize(width: 20, height: 16)
         let image = NSImage(size: size, flipped: false) { rect in
-            // Draw the base icon (left-aligned, vertically centered)
             let iconSize = base.size
             let iconOrigin = NSPoint(
                 x: 0,
@@ -129,7 +147,6 @@ final class PRManager: ObservableObject {
             )
             base.draw(at: iconOrigin, from: .zero, operation: .sourceOver, fraction: 1.0)
 
-            // Red dot badge in the top-right corner
             let dotSize: CGFloat = 5
             let dotRect = NSRect(
                 x: iconSize.width - 2,
@@ -228,6 +245,7 @@ final class PRManager: ObservableObject {
             }
         }
 
+        updateMenuBarImageIfNeeded()
         hasCompletedInitialLoad = true
     }
 

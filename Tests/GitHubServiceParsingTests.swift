@@ -190,4 +190,78 @@ import Testing
         let pr = service.parsePRNode(node)
         #expect(pr?.state == .draft)
     }
+
+    // MARK: - extractRollupData
+
+    @Test func extractRollupDataValid() {
+        let node: [String: Any] = [
+            "commits": [
+                "nodes": [[
+                    "commit": [
+                        "statusCheckRollup": [
+                            "state": "SUCCESS",
+                            "contexts": [
+                                "totalCount": 2,
+                                "nodes": [
+                                    ["status": "COMPLETED", "conclusion": "SUCCESS", "name": "build"],
+                                    ["status": "COMPLETED", "conclusion": "SUCCESS", "name": "test"],
+                                ]
+                            ]
+                        ]
+                    ]
+                ]]
+            ]
+        ]
+        let result = service.extractRollupData(from: node)
+        #expect(result != nil)
+        #expect(result?.totalCount == 2)
+        #expect(result?.contextNodes.count == 2)
+    }
+
+    @Test func extractRollupDataMissingRollup() {
+        let node: [String: Any] = [
+            "commits": ["nodes": [["commit": [:] as [String: Any]]]]
+        ]
+        #expect(service.extractRollupData(from: node) == nil)
+    }
+
+    @Test func extractRollupDataEmptyCommits() {
+        let node: [String: Any] = ["commits": ["nodes": [] as [[String: Any]]]]
+        #expect(service.extractRollupData(from: node) == nil)
+    }
+}
+
+// MARK: - GHError Descriptions
+
+@Suite struct GHErrorTests {
+    @Test func cliNotFoundDescription() {
+        let error = GHError.cliNotFound
+        #expect(error.errorDescription?.contains("not found") == true)
+    }
+
+    @Test func apiErrorDescription() {
+        let error = GHError.apiError("rate limit exceeded")
+        #expect(error.errorDescription?.contains("rate limit exceeded") == true)
+    }
+
+    @Test func apiErrorEmptyMessageFallback() {
+        let error = GHError.apiError("  ")
+        #expect(error.errorDescription == "GitHub API error")
+    }
+
+    @Test func invalidJSONDescription() {
+        let error = GHError.invalidJSON
+        #expect(error.errorDescription?.contains("Invalid response") == true)
+    }
+
+    @Test func timeoutDescription() {
+        let error = GHError.timeout
+        #expect(error.errorDescription?.contains("timed out") == true)
+    }
+
+    @Test func processLaunchFailedDescription() {
+        let error = GHError.processLaunchFailed("Permission denied")
+        #expect(error.errorDescription?.contains("Permission denied") == true)
+        #expect(error.errorDescription?.contains("Failed to launch") == true)
+    }
 }
