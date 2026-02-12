@@ -1,10 +1,11 @@
 import Testing
+import Foundation
 @testable import PRStatusWatcher
 
 @Suite struct GitHubServiceParsingTests {
     let service = GitHubService()
 
-    // MARK: - parsePRState
+    // MARK: - parsePRState (signature unchanged)
 
     @Test(arguments: [
         ("MERGED", false, PullRequest.PRState.merged),
@@ -17,51 +18,37 @@ import Testing
         #expect(service.parsePRState(rawState: rawState, isDraft: isDraft) == expected)
     }
 
-    // MARK: - parseReviewDecision
+    // MARK: - parseReviewDecision (now takes String?)
 
-    @Test func parseReviewDecisionApproved() {
-        let node: [String: Any] = ["reviewDecision": "APPROVED"]
-        #expect(service.parseReviewDecision(from: node) == .approved)
+    @Test(arguments: [
+        ("APPROVED" as String?, PullRequest.ReviewDecision.approved),
+        ("CHANGES_REQUESTED" as String?, PullRequest.ReviewDecision.changesRequested),
+        ("REVIEW_REQUIRED" as String?, PullRequest.ReviewDecision.reviewRequired),
+        (nil as String?, PullRequest.ReviewDecision.none),
+        ("" as String?, PullRequest.ReviewDecision.none),
+    ])
+    func parseReviewDecision(raw: String?, expected: PullRequest.ReviewDecision) {
+        #expect(service.parseReviewDecision(raw: raw) == expected)
     }
 
-    @Test func parseReviewDecisionChangesRequested() {
-        let node: [String: Any] = ["reviewDecision": "CHANGES_REQUESTED"]
-        #expect(service.parseReviewDecision(from: node) == .changesRequested)
+    // MARK: - parseMergeableState (now takes String?)
+
+    @Test(arguments: [
+        ("MERGEABLE" as String?, PullRequest.MergeableState.mergeable),
+        ("CONFLICTING" as String?, PullRequest.MergeableState.conflicting),
+        ("UNKNOWN" as String?, PullRequest.MergeableState.unknown),
+        (nil as String?, PullRequest.MergeableState.unknown),
+    ])
+    func parseMergeableState(raw: String?, expected: PullRequest.MergeableState) {
+        #expect(service.parseMergeableState(raw: raw) == expected)
     }
 
-    @Test func parseReviewDecisionReviewRequired() {
-        let node: [String: Any] = ["reviewDecision": "REVIEW_REQUIRED"]
-        #expect(service.parseReviewDecision(from: node) == .reviewRequired)
-    }
-
-    @Test func parseReviewDecisionMissing() {
-        let node: [String: Any] = [:]
-        #expect(service.parseReviewDecision(from: node) == .none)
-    }
-
-    // MARK: - parseMergeableState
-
-    @Test func parseMergeableStateMergeable() {
-        let node: [String: Any] = ["mergeable": "MERGEABLE"]
-        #expect(service.parseMergeableState(from: node) == .mergeable)
-    }
-
-    @Test func parseMergeableStateConflicting() {
-        let node: [String: Any] = ["mergeable": "CONFLICTING"]
-        #expect(service.parseMergeableState(from: node) == .conflicting)
-    }
-
-    @Test func parseMergeableStateUnknown() {
-        let node: [String: Any] = ["mergeable": "UNKNOWN"]
-        #expect(service.parseMergeableState(from: node) == .unknown)
-    }
-
-    // MARK: - tallyCheckContexts
+    // MARK: - tallyCheckContexts (now takes [PRNode.CheckContext])
 
     @Test func tallyAllPassing() {
-        let contexts: [[String: Any]] = [
-            ["status": "COMPLETED", "conclusion": "SUCCESS", "name": "build"],
-            ["status": "COMPLETED", "conclusion": "SUCCESS", "name": "test"],
+        let contexts: [PRNode.CheckContext] = [
+            .fixture(name: "build", status: "COMPLETED", conclusion: "SUCCESS"),
+            .fixture(name: "test", status: "COMPLETED", conclusion: "SUCCESS"),
         ]
         let counts = service.tallyCheckContexts(contexts)
         #expect(counts.passed == 2)
@@ -70,10 +57,10 @@ import Testing
     }
 
     @Test func tallyMixed() {
-        let contexts: [[String: Any]] = [
-            ["status": "COMPLETED", "conclusion": "SUCCESS", "name": "build"],
-            ["status": "COMPLETED", "conclusion": "FAILURE", "name": "lint"],
-            ["status": "IN_PROGRESS", "conclusion": "", "name": "test"],
+        let contexts: [PRNode.CheckContext] = [
+            .fixture(name: "build", status: "COMPLETED", conclusion: "SUCCESS"),
+            .fixture(name: "lint", status: "COMPLETED", conclusion: "FAILURE"),
+            .fixture(name: "test", status: "IN_PROGRESS", conclusion: ""),
         ]
         let counts = service.tallyCheckContexts(contexts)
         #expect(counts.passed == 1)
@@ -91,9 +78,9 @@ import Testing
     }
 
     @Test func tallySkippedAndNeutral() {
-        let contexts: [[String: Any]] = [
-            ["status": "COMPLETED", "conclusion": "SKIPPED", "name": "optional"],
-            ["status": "COMPLETED", "conclusion": "NEUTRAL", "name": "info"],
+        let contexts: [PRNode.CheckContext] = [
+            .fixture(name: "optional", status: "COMPLETED", conclusion: "SKIPPED"),
+            .fixture(name: "info", status: "COMPLETED", conclusion: "NEUTRAL"),
         ]
         let counts = service.tallyCheckContexts(contexts)
         #expect(counts.passed == 2)
@@ -101,9 +88,9 @@ import Testing
     }
 
     @Test func tallyEmptyNodes() {
-        let contexts: [[String: Any]] = [
-            [:],
-            ["status": "", "conclusion": ""],
+        let contexts: [PRNode.CheckContext] = [
+            PRNode.CheckContext(name: nil, status: nil, conclusion: nil, detailsUrl: nil, context: nil, state: nil, targetUrl: nil),
+            .fixture(name: nil, status: "", conclusion: ""),
         ]
         let counts = service.tallyCheckContexts(contexts)
         #expect(counts.passed == 0)
@@ -111,58 +98,95 @@ import Testing
         #expect(counts.pending == 0)
     }
 
-    // MARK: - resolveOverallStatus
+    // NEW: StatusContext node handling (previously untested)
+
+    @Test func tallyStatusContextSuccess() {
+        let contexts: [PRNode.CheckContext] = [
+            .statusContextFixture(context: "ci/circleci", state: "SUCCESS"),
+        ]
+        let counts = service.tallyCheckContexts(contexts)
+        #expect(counts.passed == 1)
+        #expect(counts.failed == 0)
+        #expect(counts.pending == 0)
+    }
+
+    @Test func tallyStatusContextFailure() {
+        let contexts: [PRNode.CheckContext] = [
+            .statusContextFixture(context: "ci/circleci", state: "FAILURE", targetUrl: "https://ci.example.com/123"),
+        ]
+        let counts = service.tallyCheckContexts(contexts)
+        #expect(counts.failed == 1)
+        #expect(counts.failedChecks.count == 1)
+        #expect(counts.failedChecks.first?.name == "ci/circleci")
+        #expect(counts.failedChecks.first?.detailsUrl?.absoluteString == "https://ci.example.com/123")
+    }
+
+    @Test func tallyStatusContextPending() {
+        let contexts: [PRNode.CheckContext] = [
+            .statusContextFixture(context: "ci/check", state: "PENDING"),
+        ]
+        let counts = service.tallyCheckContexts(contexts)
+        #expect(counts.pending == 1)
+    }
+
+    @Test func tallyMixedCheckRunAndStatusContext() {
+        let contexts: [PRNode.CheckContext] = [
+            .fixture(name: "build", status: "COMPLETED", conclusion: "SUCCESS"),
+            .statusContextFixture(context: "ci/external", state: "FAILURE"),
+        ]
+        let counts = service.tallyCheckContexts(contexts)
+        #expect(counts.passed == 1)
+        #expect(counts.failed == 1)
+    }
+
+    // MARK: - resolveOverallStatus (now takes String? instead of [String: Any])
 
     @Test func resolveOverallStatusEmpty() {
-        let result = service.resolveOverallStatus(totalCount: 0, passed: 0, failed: 0, pending: 0, rollup: [:])
+        let result = service.resolveOverallStatus(totalCount: 0, passed: 0, failed: 0, pending: 0, rollupState: nil)
         #expect(result == .unknown)
     }
 
     @Test func resolveOverallStatusAllPassed() {
-        let result = service.resolveOverallStatus(totalCount: 3, passed: 3, failed: 0, pending: 0, rollup: [:])
+        let result = service.resolveOverallStatus(totalCount: 3, passed: 3, failed: 0, pending: 0, rollupState: nil)
         #expect(result == .success)
     }
 
     @Test func resolveOverallStatusHasFailure() {
-        let result = service.resolveOverallStatus(totalCount: 3, passed: 1, failed: 1, pending: 1, rollup: [:])
+        let result = service.resolveOverallStatus(totalCount: 3, passed: 1, failed: 1, pending: 1, rollupState: nil)
         #expect(result == .failure)
     }
 
     @Test func resolveOverallStatusHasPending() {
-        let result = service.resolveOverallStatus(totalCount: 3, passed: 2, failed: 0, pending: 1, rollup: [:])
+        let result = service.resolveOverallStatus(totalCount: 3, passed: 2, failed: 0, pending: 1, rollupState: nil)
         #expect(result == .pending)
     }
 
     @Test func resolveOverallStatusFallbackToRollup() {
-        let rollup: [String: Any] = ["state": "SUCCESS"]
-        let result = service.resolveOverallStatus(totalCount: 2, passed: 0, failed: 0, pending: 0, rollup: rollup)
+        let result = service.resolveOverallStatus(totalCount: 2, passed: 0, failed: 0, pending: 0, rollupState: "SUCCESS")
         #expect(result == .success)
     }
 
     @Test func resolveOverallStatusFallbackToRollupFailure() {
-        let rollup: [String: Any] = ["state": "FAILURE"]
-        let result = service.resolveOverallStatus(totalCount: 2, passed: 0, failed: 0, pending: 0, rollup: rollup)
+        let result = service.resolveOverallStatus(totalCount: 2, passed: 0, failed: 0, pending: 0, rollupState: "FAILURE")
         #expect(result == .failure)
     }
 
-    // MARK: - parsePRNode
+    // MARK: - convertNode (replaces parsePRNode)
 
-    @Test func parsePRNodeValid() {
-        let node: [String: Any] = [
-            "number": 42,
-            "title": "Test PR",
-            "url": "https://github.com/test/repo/pull/42",
-            "repository": ["nameWithOwner": "test/repo"],
-            "author": ["login": "testuser"],
-            "isDraft": false,
-            "state": "OPEN",
-            "headRefOid": "abc1234567890",
-            "headRefName": "feature-branch",
-            "reviewDecision": "APPROVED",
-            "mergeable": "MERGEABLE",
-            "reviews": ["totalCount": 1],
-        ]
-        let pr = service.parsePRNode(node)
+    @Test func convertNodeValid() {
+        let node = PRNode.fixture(
+            number: 42,
+            title: "Test PR",
+            url: "https://github.com/test/repo/pull/42",
+            nameWithOwner: "test/repo",
+            authorLogin: "testuser",
+            isDraft: false,
+            state: "OPEN",
+            reviewDecision: "APPROVED",
+            mergeable: "MERGEABLE",
+            approvalCount: 1
+        )
+        let pr = service.convertNode(node)
         #expect(pr != nil)
         #expect(pr?.number == 42)
         #expect(pr?.title == "Test PR")
@@ -170,25 +194,182 @@ import Testing
         #expect(pr?.state == .open)
         #expect(pr?.owner == "test")
         #expect(pr?.repo == "repo")
+        #expect(pr?.reviewDecision == .approved)
+        #expect(pr?.mergeable == .mergeable)
     }
 
-    @Test func parsePRNodeMissingRequiredFields() {
-        let node: [String: Any] = ["title": "Incomplete"]
-        let pr = service.parsePRNode(node)
-        #expect(pr == nil)
+    @Test func convertNodeMissingNumber() {
+        let node = PRNode.fixture(number: nil, title: "No Number")
+        #expect(service.convertNode(node) == nil)
     }
 
-    @Test func parsePRNodeDraft() {
-        let node: [String: Any] = [
-            "number": 1,
-            "title": "Draft PR",
-            "url": "https://github.com/test/repo/pull/1",
-            "repository": ["nameWithOwner": "test/repo"],
-            "isDraft": true,
-            "state": "OPEN",
-        ]
-        let pr = service.parsePRNode(node)
+    @Test func convertNodeMissingTitle() {
+        let node = PRNode.fixture(title: nil)
+        #expect(service.convertNode(node) == nil)
+    }
+
+    @Test func convertNodeMissingURL() {
+        let node = PRNode.fixture(url: nil)
+        #expect(service.convertNode(node) == nil)
+    }
+
+    @Test func convertNodeEmptyURL() {
+        let node = PRNode.fixture(url: "")
+        #expect(service.convertNode(node) == nil)
+    }
+
+    @Test func convertNodeMissingRepository() {
+        let node = PRNode.fixture(nameWithOwner: nil)
+        #expect(service.convertNode(node) == nil)
+    }
+
+    @Test func convertNodeSingleSegmentRepo() {
+        let node = PRNode.fixture(nameWithOwner: "noslash")
+        #expect(service.convertNode(node) == nil)
+    }
+
+    @Test func convertNodeDraft() {
+        let node = PRNode.fixture(isDraft: true, state: "OPEN")
+        let pr = service.convertNode(node)
         #expect(pr?.state == .draft)
+    }
+
+    @Test func convertNodeDefaultsForOptionalFields() {
+        // Minimal valid node — only required fields
+        let node = PRNode.fixture()
+        let pr = service.convertNode(node)
+        #expect(pr != nil)
+        #expect(pr?.author == "unknown")
+        #expect(pr?.state == .open)
+        #expect(pr?.headRefName == "")
+    }
+
+    // MARK: - GraphQLResponse Decoding
+
+    @Test func decodeFullGraphQLResponse() throws {
+        let json = """
+        {
+          "data": {
+            "search": {
+              "nodes": [
+                {
+                  "number": 42,
+                  "title": "Test PR",
+                  "url": "https://github.com/test/repo/pull/42",
+                  "repository": {"nameWithOwner": "test/repo"},
+                  "author": {"login": "testuser"},
+                  "isDraft": false,
+                  "state": "OPEN"
+                }
+              ]
+            }
+          }
+        }
+        """
+        let data = Data(json.utf8)
+        let response = try JSONDecoder().decode(GraphQLResponse.self, from: data)
+        #expect(response.data?.search.nodes.count == 1)
+        #expect(response.data?.search.nodes.first?.number == 42)
+        #expect(response.errors == nil)
+    }
+
+    @Test func decodeGraphQLResponseWithErrors() throws {
+        let json = """
+        {
+          "errors": [{"message": "API rate limit exceeded", "type": "RATE_LIMITED"}],
+          "data": null
+        }
+        """
+        let data = Data(json.utf8)
+        let response = try JSONDecoder().decode(GraphQLResponse.self, from: data)
+        #expect(response.data == nil)
+        #expect(response.errors?.count == 1)
+        #expect(response.errors?.first?.message == "API rate limit exceeded")
+    }
+
+    @Test func decodeGraphQLResponseWithEmptyNodes() throws {
+        let json = """
+        {
+          "data": {
+            "search": {
+              "nodes": [{}]
+            }
+          }
+        }
+        """
+        let data = Data(json.utf8)
+        let response = try JSONDecoder().decode(GraphQLResponse.self, from: data)
+        #expect(response.data?.search.nodes.count == 1)
+        // Empty node — all fields nil
+        let node = response.data!.search.nodes[0]
+        #expect(node.number == nil)
+        #expect(node.title == nil)
+    }
+}
+
+// MARK: - Test Fixtures
+
+extension PRNode {
+    /// Minimal valid PRNode for testing. Override individual fields as needed.
+    static func fixture(
+        number: Int? = 1,
+        title: String? = "Test PR",
+        url: String? = "https://github.com/test/repo/pull/1",
+        nameWithOwner: String? = "test/repo",
+        authorLogin: String? = nil,
+        isDraft: Bool? = false,
+        state: String? = "OPEN",
+        reviewDecision: String? = nil,
+        mergeable: String? = nil,
+        mergeQueuePosition: Int?? = nil,
+        approvalCount: Int? = nil,
+        headRefOid: String? = nil,
+        headRefName: String? = nil,
+        commits: PRNode.CommitConnection? = nil
+    ) -> PRNode {
+        PRNode(
+            number: number,
+            title: title,
+            url: url,
+            repository: nameWithOwner.map { PRNode.RepositoryRef(nameWithOwner: $0) },
+            author: authorLogin.map { PRNode.AuthorRef(login: $0) },
+            isDraft: isDraft,
+            state: state,
+            reviewDecision: reviewDecision,
+            mergeable: mergeable,
+            mergeQueueEntry: mergeQueuePosition.map { PRNode.MergeQueueEntryRef(position: $0) } ?? nil,
+            reviews: approvalCount.map { PRNode.ReviewsRef(totalCount: $0) },
+            headRefOid: headRefOid,
+            headRefName: headRefName,
+            commits: commits
+        )
+    }
+}
+
+extension PRNode.CheckContext {
+    /// CheckRun-style fixture.
+    static func fixture(
+        name: String? = nil,
+        status: String? = nil,
+        conclusion: String? = nil,
+        detailsUrl: String? = nil
+    ) -> PRNode.CheckContext {
+        PRNode.CheckContext(
+            name: name, status: status, conclusion: conclusion, detailsUrl: detailsUrl,
+            context: nil, state: nil, targetUrl: nil
+        )
+    }
+
+    /// StatusContext-style fixture.
+    static func statusContextFixture(
+        context: String,
+        state: String,
+        targetUrl: String? = nil
+    ) -> PRNode.CheckContext {
+        PRNode.CheckContext(
+            name: nil, status: nil, conclusion: nil, detailsUrl: nil,
+            context: context, state: state, targetUrl: targetUrl
+        )
     }
 }
 

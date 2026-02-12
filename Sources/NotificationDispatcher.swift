@@ -9,6 +9,8 @@ private let logger = Logger(subsystem: "PRStatusWatcher", category: "Notificatio
 /// Delivers local notifications via UNUserNotificationCenter.
 /// Conforms to NotificationServiceProtocol for mock injection.
 final class NotificationDispatcher: NotificationServiceProtocol {
+    private(set) var permissionGranted: Bool = false
+
     var isAvailable: Bool {
         Bundle.main.bundleIdentifier != nil
     }
@@ -20,7 +22,8 @@ final class NotificationDispatcher: NotificationServiceProtocol {
         }
         UNUserNotificationCenter.current().requestAuthorization(
             options: [.alert, .sound]
-        ) { granted, error in
+        ) { [weak self] granted, error in
+            self?.permissionGranted = granted
             if let error {
                 logger.error("requestPermission: failed: \(error.localizedDescription, privacy: .public)")
             } else {

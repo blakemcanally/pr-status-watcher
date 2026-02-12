@@ -256,4 +256,33 @@ import Foundation
         let manager = makeManager()
         #expect(!manager.notificationsAvailable)
     }
+
+    // MARK: - toggleRepoCollapsed
+
+    @Test func toggleRepoCollapsedAddsRepo() {
+        let manager = makeManager()
+        #expect(!manager.collapsedRepos.contains("org/repo"))
+
+        manager.toggleRepoCollapsed("org/repo")
+
+        #expect(manager.collapsedRepos.contains("org/repo"))
+    }
+
+    @Test func toggleRepoCollapsedRemovesRepo() {
+        let manager = makeManager()
+        manager.collapsedRepos = ["org/repo"]
+
+        manager.toggleRepoCollapsed("org/repo")
+
+        #expect(!manager.collapsedRepos.contains("org/repo"))
+    }
+
+    @Test func toggleRepoCollapsedSavesToStore() {
+        let manager = makeManager()
+        let initialCount = mockSettings.saveCollapsedReposCallCount
+
+        manager.toggleRepoCollapsed("org/repo")
+
+        #expect(mockSettings.saveCollapsedReposCallCount == initialCount + 1)
+    }
 }

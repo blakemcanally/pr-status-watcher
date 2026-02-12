@@ -3,6 +3,7 @@ import Foundation
 
 final class MockNotificationService: NotificationServiceProtocol {
     var isAvailable: Bool = true
+    var permissionGranted: Bool = true
     var sentNotifications: [(title: String, body: String, url: URL?)] = []
     var permissionRequested = false
 

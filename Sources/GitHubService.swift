@@ -149,36 +149,57 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
             throw GHError.apiError(stderr.isEmpty ? stdout : stderr)
         }
 
-        guard let data = stdout.data(using: .utf8),
-              let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let dataDict = json["data"] as? [String: Any],
-              let search = dataDict["search"] as? [String: Any],
-              let nodes = search["nodes"] as? [[String: Any]]
-        else {
-            logger.error("fetchPRs: failed to parse JSON response")
+        guard let data = stdout.data(using: .utf8) else {
+            logger.error("fetchPRs: failed to convert stdout to Data")
             throw GHError.invalidJSON
         }
 
+        let response: GraphQLResponse
+        do {
+            response = try JSONDecoder().decode(GraphQLResponse.self, from: data)
+        } catch {
+            logger.error("fetchPRs: JSON decode failed: \(error.localizedDescription, privacy: .public)")
+            throw GHError.invalidJSON
+        }
+
+        // Surface GraphQL errors (rate limits, schema errors, partial failures)
+        if let errors = response.errors, let first = errors.first {
+            logger.error("fetchPRs: GraphQL error: \(first.message, privacy: .public)")
+            throw GHError.apiError(first.message)
+        }
+
+        guard let nodes = response.data?.search.nodes else {
+            logger.error("fetchPRs: missing data.search.nodes in response")
+            throw GHError.invalidJSON
+        }
+
+        var skippedCount = 0
         let prs = nodes.compactMap { node -> PullRequest? in
-            guard let pr = parsePRNode(node) else {
-                logger.debug("fetchPRs: skipping malformed node (number=\(node["number"] as? Int ?? -1))")
+            guard let pr = convertNode(node) else {
+                skippedCount += 1
+                let nodeNum = node.number.map(String.init) ?? "nil"
+                let nodeTitle = node.title?.prefix(50).description ?? "nil"
+                logger.warning("fetchPRs: skipping malformed node (number=\(nodeNum, privacy: .public), title=\"\(nodeTitle, privacy: .public)\")")
                 return nil
             }
             return pr
+        }
+
+        if skippedCount > 0 {
+            logger.warning("fetchPRs: skipped \(skippedCount) malformed nodes out of \(nodes.count)")
         }
         logger.info("fetchPRs: parsed \(prs.count) PRs from \(nodes.count) nodes")
         return prs
     }
 
-    // MARK: - GraphQL Response Parsing
+    // MARK: - Node Conversion (Codable → PullRequest)
 
-    func parsePRNode(_ node: [String: Any]) -> PullRequest? {
-        guard let number = node["number"] as? Int,
-              let title = node["title"] as? String,
-              let urlString = node["url"] as? String,
+    func convertNode(_ node: PRNode) -> PullRequest? {
+        guard let number = node.number,
+              let title = node.title,
+              let urlString = node.url,
               let url = URL(string: urlString),
-              let repoDict = node["repository"] as? [String: Any],
-              let nameWithOwner = repoDict["nameWithOwner"] as? String
+              let nameWithOwner = node.repository?.nameWithOwner
         else { return nil }
 
         let repoParts = nameWithOwner.split(separator: "/")
@@ -186,19 +207,16 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         let owner = String(repoParts[0])
         let repo = String(repoParts[1])
 
-        let authorDict = node["author"] as? [String: Any]
-        let author = authorDict?["login"] as? String ?? "unknown"
-        let isDraft = node["isDraft"] as? Bool ?? false
-        let rawState = node["state"] as? String ?? "OPEN"
-        let headSHA = node["headRefOid"] as? String ?? ""
-        let headRefName = node["headRefName"] as? String ?? ""
-        let mergeQueueEntry = node["mergeQueueEntry"] as? [String: Any]
-        let queuePosition = mergeQueueEntry?["position"] as? Int
-        let reviewsDict = node["reviews"] as? [String: Any]
-        let approvalCount = reviewsDict?["totalCount"] as? Int ?? 0
+        let author = node.author?.login ?? "unknown"
+        let isDraft = node.isDraft ?? false
+        let rawState = node.state ?? "OPEN"
+        let headSHA = node.headRefOid ?? ""
+        let headRefName = node.headRefName ?? ""
+        let queuePosition = node.mergeQueueEntry?.position
+        let approvalCount = node.reviews?.totalCount ?? 0
 
-        let reviewDecision = parseReviewDecision(from: node)
-        let mergeable = parseMergeableState(from: node)
+        let reviewDecision = parseReviewDecision(raw: node.reviewDecision)
+        let mergeable = parseMergeableState(raw: node.mergeable)
         let state = parsePRState(rawState: rawState, isDraft: isDraft)
         let checkResult = parseCheckStatus(from: node)
 
@@ -210,7 +228,7 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
             author: author,
             state: state,
             ciStatus: checkResult.status,
-            isInMergeQueue: mergeQueueEntry != nil,
+            isInMergeQueue: node.mergeQueueEntry != nil,
             checksTotal: checkResult.total,
             checksPassed: checkResult.passed,
             checksFailed: checkResult.failed,
@@ -226,9 +244,8 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         )
     }
 
-    func parseReviewDecision(from node: [String: Any]) -> PullRequest.ReviewDecision {
-        let raw = node["reviewDecision"] as? String ?? ""
-        switch raw {
+    func parseReviewDecision(raw: String?) -> PullRequest.ReviewDecision {
+        switch raw ?? "" {
         case "APPROVED": return .approved
         case "CHANGES_REQUESTED": return .changesRequested
         case "REVIEW_REQUIRED": return .reviewRequired
@@ -236,9 +253,8 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         }
     }
 
-    func parseMergeableState(from node: [String: Any]) -> PullRequest.MergeableState {
-        let raw = node["mergeable"] as? String ?? ""
-        switch raw {
+    func parseMergeableState(raw: String?) -> PullRequest.MergeableState {
+        switch raw ?? "" {
         case "MERGEABLE": return .mergeable
         case "CONFLICTING": return .conflicting
         default: return .unknown
@@ -261,7 +277,15 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         let failedChecks: [PullRequest.CheckInfo]
     }
 
-    func parseCheckStatus(from node: [String: Any]) -> CIResult {
+    // MARK: - Check Status Parsing (typed)
+
+    struct TypedRollupData {
+        let rollupState: String?
+        let totalCount: Int
+        let contextNodes: [PRNode.CheckContext]
+    }
+
+    func parseCheckStatus(from node: PRNode) -> CIResult {
         guard let rollupData = extractRollupData(from: node) else {
             return CIResult(status: .unknown, total: 0, passed: 0, failed: 0, failedChecks: [])
         }
@@ -273,7 +297,7 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
             passed: counts.passed,
             failed: counts.failed,
             pending: counts.pending,
-            rollup: rollupData.rollup
+            rollupState: rollupData.rollupState
         )
 
         return CIResult(
@@ -285,24 +309,18 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         )
     }
 
-    struct RollupData {
-        let rollup: [String: Any]
-        let totalCount: Int
-        let contextNodes: [[String: Any]]
-    }
-
-    func extractRollupData(from node: [String: Any]) -> RollupData? {
-        guard let commits = node["commits"] as? [String: Any],
-              let commitNodes = commits["nodes"] as? [[String: Any]],
-              let firstCommit = commitNodes.first,
-              let commit = firstCommit["commit"] as? [String: Any],
-              let rollup = commit["statusCheckRollup"] as? [String: Any],
-              let contexts = rollup["contexts"] as? [String: Any],
-              let totalCount = contexts["totalCount"] as? Int,
-              let contextNodes = contexts["nodes"] as? [[String: Any]]
+    func extractRollupData(from node: PRNode) -> TypedRollupData? {
+        guard let commits = node.commits?.nodes,
+              let firstCommit = commits.first,
+              let rollup = firstCommit.commit.statusCheckRollup,
+              let contexts = rollup.contexts
         else { return nil }
 
-        return RollupData(rollup: rollup, totalCount: totalCount, contextNodes: contextNodes)
+        return TypedRollupData(
+            rollupState: rollup.state,
+            totalCount: contexts.totalCount,
+            contextNodes: contexts.nodes
+        )
     }
 
     struct CheckCounts {
@@ -312,19 +330,18 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         var failedChecks: [PullRequest.CheckInfo]
     }
 
-    func tallyCheckContexts(_ contextNodes: [[String: Any]]) -> CheckCounts {
+    func tallyCheckContexts(_ contexts: [PRNode.CheckContext]) -> CheckCounts {
         var counts = CheckCounts(passed: 0, failed: 0, pending: 0, failedChecks: [])
 
-        for ctx in contextNodes {
-            if let contextName = ctx["context"] as? String {
+        for ctx in contexts {
+            if let contextName = ctx.context {
                 // StatusContext node
-                let state = ctx["state"] as? String ?? ""
-                switch state {
+                switch ctx.state ?? "" {
                 case "SUCCESS":
                     counts.passed += 1
                 case "FAILURE", "ERROR":
                     counts.failed += 1
-                    let targetUrl = (ctx["targetUrl"] as? String).flatMap { URL(string: $0) }
+                    let targetUrl = ctx.targetUrl.flatMap { URL(string: $0) }
                     counts.failedChecks.append(PullRequest.CheckInfo(name: contextName, detailsUrl: targetUrl))
                 case "PENDING", "EXPECTED":
                     counts.pending += 1
@@ -333,13 +350,13 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
                 }
             } else {
                 // CheckRun node
-                let status = ctx["status"] as? String ?? ""
-                let conclusion = ctx["conclusion"] as? String ?? ""
+                let status = ctx.status ?? ""
+                let conclusion = ctx.conclusion ?? ""
 
                 if status.isEmpty && conclusion.isEmpty { continue }
 
                 if status == "COMPLETED" {
-                    classifyCompletedCheck(ctx, conclusion: conclusion, counts: &counts)
+                    classifyCompletedCheckContext(ctx, conclusion: conclusion, counts: &counts)
                 } else {
                     counts.pending += 1
                 }
@@ -349,8 +366,8 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         return counts
     }
 
-    func classifyCompletedCheck(
-        _ ctx: [String: Any],
+    func classifyCompletedCheckContext(
+        _ ctx: PRNode.CheckContext,
         conclusion: String,
         counts: inout CheckCounts
     ) {
@@ -359,8 +376,8 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
             counts.passed += 1
         default:
             counts.failed += 1
-            if let name = ctx["name"] as? String {
-                let detailsUrl = (ctx["detailsUrl"] as? String).flatMap { URL(string: $0) }
+            if let name = ctx.name {
+                let detailsUrl = ctx.detailsUrl.flatMap { URL(string: $0) }
                 counts.failedChecks.append(PullRequest.CheckInfo(name: name, detailsUrl: detailsUrl))
             }
         }
@@ -371,7 +388,7 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
         passed: Int,
         failed: Int,
         pending: Int,
-        rollup: [String: Any]
+        rollupState: String?
     ) -> PullRequest.CIStatus {
         if totalCount == 0 { return .unknown }
         if failed > 0 { return .failure }
@@ -379,8 +396,7 @@ final class GitHubService: GitHubServiceProtocol, @unchecked Sendable {
 
         // All nodes were empty StatusContexts — fall back to rollup state
         if passed == 0 {
-            let rollupState = rollup["state"] as? String ?? ""
-            switch rollupState {
+            switch rollupState ?? "" {
             case "SUCCESS": return .success
             case "FAILURE", "ERROR": return .failure
             case "PENDING": return .pending

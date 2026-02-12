@@ -26,25 +26,7 @@ struct ContentView: View {
 
     /// Active PRs grouped by repo, sorted by repo name. Sort within each repo depends on tab.
     private var groupedPRs: [(repo: String, prs: [PullRequest])] {
-        let dict = Dictionary(grouping: filteredPRs, by: \.repoFullName)
-        let isReviews = selectedTab == .reviews
-        return dict.keys.sorted().map { key in
-            (repo: key, prs: (dict[key] ?? []).sorted {
-                if isReviews {
-                    // Reviews tab: needs-review first, then fewest approvals, then state, then number
-                    if $0.reviewSortPriority != $1.reviewSortPriority {
-                        return $0.reviewSortPriority < $1.reviewSortPriority
-                    }
-                    if $0.approvalCount != $1.approvalCount {
-                        return $0.approvalCount < $1.approvalCount
-                    }
-                }
-                let lhsPriority = $0.sortPriority
-                let rhsPriority = $1.sortPriority
-                if lhsPriority != rhsPriority { return lhsPriority < rhsPriority }
-                return $0.number < $1.number
-            })
-        }
+        PRGrouping.grouped(prs: filteredPRs, isReviews: selectedTab == .reviews)
     }
 
     var body: some View {
@@ -166,15 +148,7 @@ struct ContentView: View {
     private func repoHeader(repo: String, prs: [PullRequest], isCollapsed: Bool) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
-                if isCollapsed {
-                    var updated = manager.collapsedRepos
-                    updated.remove(repo)
-                    manager.collapsedRepos = updated
-                } else {
-                    var updated = manager.collapsedRepos
-                    updated.insert(repo)
-                    manager.collapsedRepos = updated
-                }
+                manager.toggleRepoCollapsed(repo)
             }
         } label: {
             HStack(spacing: 6) {
