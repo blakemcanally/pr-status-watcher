@@ -18,7 +18,13 @@ struct GraphQLData: Codable {
 }
 
 struct SearchResult: Codable {
+    let pageInfo: PageInfo?
     let nodes: [PRNode]
+}
+
+struct PageInfo: Codable {
+    let hasNextPage: Bool
+    let endCursor: String?
 }
 
 /// A PR node from the GraphQL search results.

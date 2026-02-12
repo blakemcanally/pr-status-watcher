@@ -23,6 +23,10 @@ enum Strings {
         static let ghInvalidJSON = "Invalid response from GitHub API"
         static let ghTimeout = "GitHub CLI timed out — check your network connection"
 
+        static func ghProcessLaunchFailed(_ detail: String) -> String {
+            "Failed to launch GitHub CLI: \(detail)"
+        }
+
         static func reviewFetchPrefix(_ message: String) -> String {
             "Reviews: \(message)"
         }
