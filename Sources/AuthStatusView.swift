@@ -29,7 +29,7 @@ struct AuthStatusView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            .accessibilityLabel("Signed in as \(username)")
+            .accessibilityLabel(Strings.Auth.signedIn(username))
         case .detailed:
             HStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
@@ -40,7 +40,7 @@ struct AuthStatusView: View {
             .padding(10)
             .background(Color.green.opacity(0.08))
             .cornerRadius(8)
-            .accessibilityLabel("Signed in as \(username)")
+            .accessibilityLabel(Strings.Auth.signedIn(username))
         }
     }
 
@@ -52,22 +52,22 @@ struct AuthStatusView: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundColor(.orange)
-                Text("gh not authenticated")
+                Text(Strings.Auth.compactNotAuth)
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
-            .accessibilityLabel("Not authenticated")
+            .accessibilityLabel(Strings.Auth.notAuthenticated)
         case .detailed:
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Not authenticated")
+                    Text(Strings.Auth.notAuthenticated)
                         .font(.body.weight(.medium))
-                    Text("Run this command in your terminal:")
+                    Text(Strings.Auth.authInstructions)
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    Text("gh auth login")
+                    Text(Strings.Auth.authCommand)
                         .font(.system(.caption, design: .monospaced))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
@@ -79,7 +79,7 @@ struct AuthStatusView: View {
             .padding(10)
             .background(Color.orange.opacity(0.08))
             .cornerRadius(8)
-            .accessibilityLabel("Not authenticated. Run gh auth login in terminal.")
+            .accessibilityLabel("\(Strings.Auth.notAuthenticated). \(Strings.Auth.authInstructions) \(Strings.Auth.authCommand)")
         }
     }
 }

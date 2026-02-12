@@ -49,7 +49,7 @@ enum PRStatusSummary {
     /// whether they have active PRs or pending reviews. Returns empty string when both are empty.
     static func statusBarSummary(for pullRequests: [PullRequest], reviewPRs: [PullRequest]) -> String {
         guard !pullRequests.isEmpty || !reviewPRs.isEmpty else { return "" }
-        return "\(pullRequests.count) | \(reviewPRs.count)"
+        return Strings.Status.barSummary(myCount: pullRequests.count, reviewCount: reviewPRs.count)
     }
 
     /// Human-readable label for a polling interval in seconds.
@@ -60,7 +60,7 @@ enum PRStatusSummary {
         return "\(interval)s"
     }
 
-    /// Coarse countdown label for the next refresh.
+    /// Coarse countdown label for the next refresh, rounded to the nearest unit.
     ///
     /// Granularity: 10 s steps below 1 min, 1 min steps at ≥ 1 min.
     /// Returns `nil` when the target is fewer than 10 s away (i.e. refresh is imminent).
@@ -68,10 +68,12 @@ enum PRStatusSummary {
         let remaining = Int(target.timeIntervalSince(now))
         guard remaining >= 10 else { return nil }
         if remaining < 60 {
-            let rounded = (remaining / 10) * 10
-            return "~\(rounded)s"
+            let rounded = ((remaining + 5) / 10) * 10
+            // If rounding pushes to 60s, show as ~1 min instead
+            if rounded >= 60 { return Strings.Refresh.countdownAboutOneMinute }
+            return Strings.Refresh.countdownSeconds(rounded)
         }
-        let minutes = remaining / 60
-        return "~\(minutes) min"
+        let minutes = (remaining + 30) / 60
+        return Strings.Refresh.countdownMinutes(minutes)
     }
 }

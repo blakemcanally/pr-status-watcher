@@ -376,16 +376,16 @@ extension PRNode.CheckContext {
 // MARK: - GHError Description Tests
 
 @Suite struct GHErrorDescriptionTests {
-    @Test func cliNotFoundUsesExpectedMessage() {
-        #expect(GHError.cliNotFound.errorDescription == "GitHub CLI (gh) not found — install it with: brew install gh")
+    @Test func cliNotFoundUsesStringsConstant() {
+        #expect(GHError.cliNotFound.errorDescription == Strings.Error.ghCliNotFound)
     }
 
-    @Test func timeoutUsesExpectedMessage() {
-        #expect(GHError.timeout.errorDescription == "GitHub CLI timed out — check your network connection")
+    @Test func timeoutUsesStringsConstant() {
+        #expect(GHError.timeout.errorDescription == Strings.Error.ghTimeout)
     }
 
-    @Test func invalidJSONUsesExpectedMessage() {
-        #expect(GHError.invalidJSON.errorDescription == "Invalid response from GitHub API")
+    @Test func invalidJSONUsesStringsConstant() {
+        #expect(GHError.invalidJSON.errorDescription == Strings.Error.ghInvalidJSON)
     }
 
     @Test func apiErrorReturnsCustomMessage() {
@@ -395,12 +395,12 @@ extension PRNode.CheckContext {
 
     @Test func apiErrorEmptyReturnsFallback() {
         let error = GHError.apiError("")
-        #expect(error.errorDescription == "GitHub API error")
+        #expect(error.errorDescription == Strings.Error.ghApiErrorFallback)
     }
 
     @Test func apiErrorWhitespaceReturnsFallback() {
         let error = GHError.apiError("  \n  ")
-        #expect(error.errorDescription == "GitHub API error")
+        #expect(error.errorDescription == Strings.Error.ghApiErrorFallback)
     }
 }
 

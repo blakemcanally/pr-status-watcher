@@ -25,15 +25,18 @@ final class NotificationDispatcher: NotificationServiceProtocol {
         ) { [weak self] granted, error in
             self?.permissionGranted = granted
             if let error {
-                logger.error("requestPermission: failed — \(error.localizedDescription, privacy: .public)")
+                logger.error("requestPermission: failed: \(error.localizedDescription, privacy: .public)")
             } else {
-                logger.info("requestPermission: \(granted ? "granted" : "denied")")
+                logger.info("requestPermission: granted=\(granted)")
             }
         }
     }
 
     func send(title: String, body: String, url: URL?) {
-        guard isAvailable else { return }
+        guard isAvailable else {
+            logger.debug("send: skipped — no bundle identifier")
+            return
+        }
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
@@ -49,9 +52,9 @@ final class NotificationDispatcher: NotificationServiceProtocol {
         )
         UNUserNotificationCenter.current().add(request) { error in
             if let error {
-                logger.error("send: delivery failed — \(error.localizedDescription, privacy: .public)")
+                logger.error("send: delivery failed: \(error.localizedDescription, privacy: .public)")
             } else {
-                logger.debug("send: delivered '\(title)' notification")
+                logger.debug("send: delivered '\(title, privacy: .public)'")
             }
         }
     }

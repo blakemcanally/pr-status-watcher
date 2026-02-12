@@ -110,13 +110,14 @@ final class PRManager: ObservableObject {
     }
 
     var statusBarSummary: String {
-        PRStatusSummary.statusBarSummary(for: pullRequests, reviewPRs: reviewPRs)
+        let filteredReviews = filterSettings.applyReviewFilters(to: reviewPRs)
+        return PRStatusSummary.statusBarSummary(for: pullRequests, reviewPRs: filteredReviews)
     }
 
     /// Menu bar image with a red badge dot when CI is failing.
     var menuBarImage: NSImage {
         let symbolName = overallStatusIcon
-        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
+        let config = NSImage.SymbolConfiguration(pointSize: AppConstants.Layout.MenuBar.symbolPointSize, weight: .medium)
         let base = NSImage(systemSymbolName: symbolName, accessibilityDescription: "PR Status")?
             .withSymbolConfiguration(config) ?? NSImage()
 
@@ -129,7 +130,7 @@ final class PRManager: ObservableObject {
         }
 
         // Composite the icon with a red badge dot
-        let size = NSSize(width: 20, height: 16)
+        let size = AppConstants.Layout.MenuBar.imageSize
         let image = NSImage(size: size, flipped: false) { rect in
             // Draw the base icon (left-aligned, vertically centered)
             let iconSize = base.size
@@ -140,7 +141,7 @@ final class PRManager: ObservableObject {
             base.draw(at: iconOrigin, from: .zero, operation: .sourceOver, fraction: 1.0)
 
             // Red dot badge in the top-right corner
-            let dotSize: CGFloat = 5
+            let dotSize: CGFloat = AppConstants.Layout.MenuBar.badgeDotDiameter
             let dotRect = NSRect(
                 x: iconSize.width - 2,
                 y: rect.height - dotSize - 1,
@@ -161,7 +162,7 @@ final class PRManager: ObservableObject {
     func refreshAll() async {
         guard let user = ghUser else {
             logger.warning("refreshAll: no gh user, aborting")
-            lastError = "gh not authenticated"
+            lastError = Strings.Error.ghNotAuthenticated
             return
         }
 
@@ -230,7 +231,7 @@ final class PRManager: ObservableObject {
         case .failure(let error):
             logger.error("refreshAll: review PRs fetch failed: \(error.localizedDescription, privacy: .public)")
             // Keep existing reviewPRs in place — don't blank the UI
-            let reviewError = "Reviews: \(error.localizedDescription)"
+            let reviewError = Strings.Error.reviewFetchPrefix(error.localizedDescription)
             if let existing = lastError {
                 lastError = "\(existing) | \(reviewError)"
             } else {

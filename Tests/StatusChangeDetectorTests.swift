@@ -17,7 +17,7 @@ import Foundation
         )
 
         #expect(result.count == 1)
-        #expect(result.first?.title == "CI Failed")
+        #expect(result.first?.title == Strings.Notification.ciFailed)
     }
 
     @Test func pendingToSuccessSendsAllChecksPassed() {
@@ -30,7 +30,7 @@ import Foundation
         )
 
         #expect(result.count == 1)
-        #expect(result.first?.title == "All Checks Passed")
+        #expect(result.first?.title == Strings.Notification.allChecksPassed)
     }
 
     @Test func successToFailureDoesNotNotify() {
@@ -92,7 +92,7 @@ import Foundation
         )
 
         #expect(result.count == 1)
-        #expect(result.first?.title == "PR No Longer Open")
+        #expect(result.first?.title == Strings.Notification.prNoLongerOpen)
         #expect(result.first?.body.contains("test/repo#1") == true)
         #expect(result.first?.url == nil)
     }
@@ -110,7 +110,7 @@ import Foundation
         )
 
         #expect(result.count == 3)
-        #expect(result.allSatisfy { $0.title == "PR No Longer Open" })
+        #expect(result.allSatisfy { $0.title == Strings.Notification.prNoLongerOpen })
     }
 
     // MARK: - Multiple Changes
@@ -134,9 +134,9 @@ import Foundation
 
         #expect(result.count == 3)
         let titles = Set(result.map(\.title))
-        #expect(titles.contains("CI Failed"))
-        #expect(titles.contains("All Checks Passed"))
-        #expect(titles.contains("PR No Longer Open"))
+        #expect(titles.contains(Strings.Notification.ciFailed))
+        #expect(titles.contains(Strings.Notification.allChecksPassed))
+        #expect(titles.contains(Strings.Notification.prNoLongerOpen))
     }
 
     // MARK: - Edge Cases

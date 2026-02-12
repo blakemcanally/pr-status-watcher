@@ -160,12 +160,16 @@ import Foundation
 
     @Test(arguments: [
         (10, "~10s"),
-        (15, "~10s"),
-        (19, "~10s"),
+        (14, "~10s"),
+        (15, "~20s"),
         (20, "~20s"),
-        (35, "~30s"),
+        (24, "~20s"),
+        (25, "~30s"),
+        (35, "~40s"),
         (50, "~50s"),
-        (59, "~50s"),
+        (54, "~50s"),
+        (55, "~1 min"),
+        (59, "~1 min"),
     ])
     func countdownLabelSeconds(remaining: Int, expected: String) {
         let now = Date.now
@@ -176,9 +180,12 @@ import Foundation
     @Test(arguments: [
         (60, "~1 min"),
         (89, "~1 min"),
-        (119, "~1 min"),
+        (90, "~2 min"),
+        (119, "~2 min"),
         (120, "~2 min"),
-        (179, "~2 min"),
+        (149, "~2 min"),
+        (150, "~3 min"),
+        (179, "~3 min"),
         (300, "~5 min"),
     ])
     func countdownLabelMinutes(remaining: Int, expected: String) {
