@@ -159,26 +159,17 @@ Tests/
 
 ### Code Correctness
 
-- [ ] **Harden `gh auth status` parsing** -- Replace the current string-matching against `gh auth status --active` human-readable output ("Logged in to github.com account USERNAME") with structured output via `gh api user --jq .login`. The current approach is fragile and one `gh` CLI version change away from breaking.
-- [ ] **Store and cancel the polling task** -- `PRManager.startPolling()` fires a `Task` that is never stored or cancelled. Add a `pollingTask` property and cancel it in `deinit` to prevent zombie polling loops if `PRManager` is ever recreated.
-- [ ] **Escape GraphQL query parameters** -- The search query string is interpolated directly into the GraphQL query via `"\(searchQuery)"`. If a username or search term contains `"` or `\`, the query silently breaks. Add a helper to escape special characters before interpolation.
-- [ ] **Handle StatusContext nodes in check parsing** -- The GraphQL query only includes a `... on CheckRun` fragment. Repos using commit statuses (not check runs) produce empty nodes that are silently skipped, causing `totalCount` to be higher than the sum of passed+failed+pending.
-
-### Code Quality
 
 - [ ] **Remove dead error cases** -- `GHError.notAuthenticated` and `GHError.notFound` are defined but never thrown. Dead code in an error enum is confusing because it implies handling paths that don't exist.
 - [ ] **Remove `statusColor` passthrough in PRRowView** -- `private var statusColor` on line 101 of `PRRowView.swift` is a one-liner alias for `pullRequest.statusColor`. Inline it at the single call site.
 - [ ] **Remove redundant sorting in PRManager** -- `refreshAll()` sorts PRs by repo+number, but `ContentView.groupedPRs` re-sorts by priority+number. The PRManager sort is wasted work.
 - [ ] **Replace `AnyView` with `@ViewBuilder` in badgePill** -- The `trailing` parameter uses `AnyView` type erasure, which defeats SwiftUI's view diffing optimizer. Use a generic `@ViewBuilder` closure or a concrete `Image` parameter instead.
-- [ ] **Add `Codable` conformance to PullRequest** -- Enables future persistence, caching, and export without a model rewrite.
-- [ ] **Add `Equatable` conformance to PullRequest** -- Improves SwiftUI diffing efficiency and enables proper change detection beyond `Identifiable`.
 - [ ] **Surface notification unavailability** -- When running via `swift run` (no bundle identifier), notifications are silently disabled. Show feedback so the user knows why notifications aren't working.
 - [ ] **Handle `SMAppService.register()` failures** -- The launch-at-login toggle in `SettingsView` silently swallows errors with `try?`. If registration fails (e.g., app not codesigned), the toggle appears to flip but nothing happens.
 
 ### UX / Accessibility
 
 - [ ] **Add keyboard shortcuts** -- `Cmd+R` for refresh, `Cmd+,` for settings, `Cmd+Q` for quit. These are standard macOS conventions and require only one-line `.keyboardShortcut()` additions to existing buttons.
-- [ ] **Persist collapsed repo state** -- `collapsedRepos` is `@State` and resets every time the menu bar window opens. Persist it to `UserDefaults`.
 - [ ] **Add accessibility labels** -- No `accessibilityLabel`, `accessibilityHint`, or other accessibility modifiers exist anywhere in the codebase beyond the menu bar icon image.
 - [ ] **Adaptive window sizing** -- `ContentView` and `SettingsView` use hardcoded frame sizes that don't adapt to Dynamic Type, accessibility settings, or content amount.
 
