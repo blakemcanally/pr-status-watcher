@@ -69,35 +69,58 @@ cp -r ".build/release/PR Status Watcher.app" /Applications/
 
 On launch (and at a configurable interval, default 60s), the app runs two GitHub GraphQL queries through the `gh` CLI -- one for your authored PRs and one for PRs where your review is requested -- along with their CI check status. No tokens to manage, no API keys to configure -- it piggybacks on your existing `gh auth` session.
 
-The `gh` binary is resolved by checking known install locations (Homebrew, /usr/local, /usr/bin) and then searching the system `PATH`. Configuration constants live in `Sources/Constants.swift`.
+The `gh` binary is resolved by checking known install locations (Homebrew, /usr/local, /usr/bin) and then searching the system `PATH`. Configuration constants live in `Sources/App/Constants.swift`.
 
 PRs are grouped by repository and sorted by state (Open, Draft, Queued) then by PR number.
 
 ## Architecture
 
+The source is organized into vertical feature slices, each designed to lift out into a standalone Swift package when the time comes.
+
 ```
 Sources/
-├── App.swift                      # @main entry point, MenuBarExtra setup, notification delegate
-├── AuthStatusView.swift           # Shared auth status component (compact / detailed)
-├── Constants.swift                # Centralized configuration constants (layout, keys, limits)
-├── ContentView.swift              # Main UI with tabs, grouped/collapsible repo sections
-├── GitHubService.swift            # GraphQL queries via gh CLI, PATH-based binary resolution
-├── GitHubService+CheckStatusParsing.swift  # CI check status tallying and classification
-├── GitHubService+NodeConversion.swift      # GraphQL node → PullRequest conversion
-├── GitHubServiceProtocol.swift    # Protocol for dependency injection
-├── Models.swift                   # PullRequest model, state & CI enums, FilterSettings
-├── NotificationDispatcher.swift   # macOS notification delivery with structured logging
-├── NotificationServiceProtocol.swift  # Protocol for notification injection
-├── PollingScheduler.swift         # Async polling loop with cancellation support
-├── PRManager.swift                # ViewModel — orchestrates fetch, state, and notifications
-├── PRRowView.swift                # Individual PR row with status badges
-├── PRStatusSummary.swift          # Pure functions for menu bar state derivation
-├── SettingsStore.swift            # UserDefaults persistence with error logging
-├── SettingsStoreProtocol.swift    # Protocol for settings injection
-├── SettingsView.swift             # Settings (auth, launch at login, polling, review readiness)
-├── StatusChangeDetector.swift     # Diff-based notification trigger logic
-├── StatusNotification.swift       # Notification model
-└── Strings.swift                  # User-facing strings (localization-ready)
+├── Models/                        # Shared domain types (zero dependencies)
+│   ├── Models.swift               #   PullRequest, FilterSettings, state & CI enums
+│   ├── PRGrouping.swift           #   Pure repo-grouping and sorting logic
+│   └── PRStatusSummary.swift      #   Pure functions for menu bar state derivation
+│
+├── GitHub/                        # GitHub API integration (→ Models)
+│   ├── GitHubService.swift        #   GraphQL queries via gh CLI, PATH-based binary resolution
+│   ├── GitHubService+CheckStatusParsing.swift  # CI check tallying and classification
+│   ├── GitHubService+NodeConversion.swift      # GraphQL node → PullRequest conversion
+│   ├── GitHubServiceProtocol.swift             # Protocol for dependency injection
+│   └── GraphQLResponse.swift      #   Codable types for GraphQL JSON responses
+│
+├── Notifications/                 # Status change detection & dispatch (→ Models)
+│   ├── StatusChangeDetector.swift #   Diff-based notification trigger logic
+│   ├── StatusNotification.swift   #   Notification value type
+│   ├── NotificationDispatcher.swift   # macOS notification delivery
+│   └── NotificationServiceProtocol.swift  # Protocol for injection
+│
+├── Settings/                      # Preferences persistence (→ Models)
+│   ├── SettingsStore.swift        #   UserDefaults persistence with error logging
+│   └── SettingsStoreProtocol.swift    # Protocol for injection
+│
+└── App/                           # Composition root (→ all of the above)
+    ├── App.swift                  #   @main entry point, MenuBarExtra, notification delegate
+    ├── PRManager.swift            #   ViewModel — orchestrates fetch, state, and notifications
+    ├── PollingScheduler.swift     #   Async polling loop with cancellation support
+    ├── ContentView.swift          #   Main UI with tabs, grouped/collapsible repo sections
+    ├── PRRowView.swift            #   Individual PR row with status badges
+    ├── SettingsView.swift         #   Settings (auth, polling, review readiness)
+    ├── AuthStatusView.swift       #   Auth status component (compact / detailed)
+    ├── Constants.swift            #   Centralized configuration constants
+    └── Strings.swift              #   User-facing strings (localization-ready)
+```
+
+**Dependency graph** (each arrow means "depends on"):
+
+```
+App → GitHub, Notifications, Settings, Models
+GitHub → Models
+Notifications → Models
+Settings → Models
+Models → (nothing)
 ```
 
 - **SwiftUI** with `MenuBarExtra` (macOS 13+)
@@ -171,7 +194,7 @@ Tests/
 
 ## Localization
 
-User-facing strings are centralized in `Sources/Strings.swift`. When localization is needed:
+User-facing strings are centralized in `Sources/App/Strings.swift`. When localization is needed:
 
 1. Add a `Localizable.xcstrings` string catalog to the project
 2. Replace each `Strings.*` property with `String(localized:)`:
