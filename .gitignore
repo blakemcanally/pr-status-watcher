@@ -4,8 +4,6 @@
 xcuserdata/
 DerivedData/
 .DS_Store
-thoughts/
-
 # Coverage
 .build/coverage-html/
 .build/coverage.lcov
