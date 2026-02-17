@@ -32,6 +32,25 @@ final class PRManager: ObservableObject {
         }
     }
 
+    @Published var collapsedReadinessSections: Set<String> = [] {
+        didSet { settingsStore.saveCollapsedReadinessSections(collapsedReadinessSections) }
+    }
+
+    func toggleReadinessSectionCollapsed(_ section: String) {
+        if collapsedReadinessSections.contains(section) {
+            collapsedReadinessSections.remove(section)
+        } else {
+            collapsedReadinessSections.insert(section)
+        }
+    }
+
+    /// All unique check names seen across review PRs, sorted alphabetically.
+    /// Used for autocomplete in the required-checks settings UI.
+    var availableCheckNames: [String] {
+        let names = Set(reviewPRs.flatMap { $0.checkResults.map(\.name) })
+        return names.sorted()
+    }
+
     @Published var filterSettings: FilterSettings = FilterSettings() {
         didSet { settingsStore.saveFilterSettings(filterSettings) }
     }
@@ -70,6 +89,7 @@ final class PRManager: ObservableObject {
         self.refreshInterval = settingsStore.loadRefreshInterval()
         self.collapsedRepos = settingsStore.loadCollapsedRepos()
         self.filterSettings = settingsStore.loadFilterSettings()
+        self.collapsedReadinessSections = settingsStore.loadCollapsedReadinessSections()
 
         notificationService.requestPermission()
 

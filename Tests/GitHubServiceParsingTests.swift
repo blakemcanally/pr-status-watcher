@@ -139,6 +139,127 @@ import Foundation
         #expect(counts.failed == 1)
     }
 
+    // MARK: - allChecks population
+
+    @Test func tallyPopulatesAllChecks() {
+        let contexts: [PRNode.CheckContext] = [
+            .fixture(name: "build", status: "COMPLETED", conclusion: "SUCCESS"),
+            .fixture(name: "lint", status: "COMPLETED", conclusion: "FAILURE"),
+            .fixture(name: "test", status: "IN_PROGRESS", conclusion: ""),
+        ]
+        let counts = service.tallyCheckContexts(contexts)
+        #expect(counts.allChecks.count == 3)
+        #expect(counts.allChecks.first(where: { $0.name == "build" })?.status == .passed)
+        #expect(counts.allChecks.first(where: { $0.name == "lint" })?.status == .failed)
+        #expect(counts.allChecks.first(where: { $0.name == "test" })?.status == .pending)
+    }
+
+    @Test func tallyStatusContextPopulatesAllChecks() {
+        let contexts: [PRNode.CheckContext] = [
+            .statusContextFixture(context: "ci/circleci", state: "SUCCESS"),
+            .statusContextFixture(context: "ci/external", state: "FAILURE"),
+        ]
+        let counts = service.tallyCheckContexts(contexts)
+        #expect(counts.allChecks.count == 2)
+        #expect(counts.allChecks.first(where: { $0.name == "ci/circleci" })?.status == .passed)
+        #expect(counts.allChecks.first(where: { $0.name == "ci/external" })?.status == .failed)
+    }
+
+    // MARK: - Edge cases: pending CheckRun with name, completed failure with name
+
+    @Test func tallyPendingCheckRunWithNamePopulatesAllChecks() {
+        let contexts: [PRNode.CheckContext] = [
+            .fixture(name: "deploy", status: "QUEUED", conclusion: ""),
+        ]
+        let counts = service.tallyCheckContexts(contexts)
+        #expect(counts.pending == 1)
+        #expect(counts.allChecks.count == 1)
+        #expect(counts.allChecks.first?.name == "deploy")
+        #expect(counts.allChecks.first?.status == .pending)
+    }
+
+    @Test func tallyCompletedFailureWithNamePopulatesAllChecks() {
+        let contexts: [PRNode.CheckContext] = [
+            .fixture(name: "e2e", status: "COMPLETED", conclusion: "FAILURE",
+                     detailsUrl: "https://ci.example.com/456"),
+        ]
+        let counts = service.tallyCheckContexts(contexts)
+        #expect(counts.failed == 1)
+        #expect(counts.failedChecks.count == 1)
+        #expect(counts.failedChecks.first?.name == "e2e")
+        #expect(counts.allChecks.count == 1)
+        #expect(counts.allChecks.first?.name == "e2e")
+        #expect(counts.allChecks.first?.status == .failed)
+        #expect(counts.allChecks.first?.detailsUrl?.absoluteString == "https://ci.example.com/456")
+    }
+
+    @Test func tallyStatusContextErrorCountsAsFailure() {
+        let contexts: [PRNode.CheckContext] = [
+            .statusContextFixture(context: "ci/broken", state: "ERROR"),
+        ]
+        let counts = service.tallyCheckContexts(contexts)
+        #expect(counts.failed == 1)
+        #expect(counts.failedChecks.first?.name == "ci/broken")
+        #expect(counts.allChecks.first?.status == .failed)
+    }
+
+    // MARK: - extractRollupData: truncated contexts path
+
+    @Test func extractRollupDataTruncatedContextsStillReturnsData() {
+        let node = PRNode.fixture(
+            commits: PRNode.CommitConnection(nodes: [
+                PRNode.CommitNode(commit: PRNode.CommitRef(
+                    statusCheckRollup: PRNode.StatusCheckRollup(
+                        state: "PENDING",
+                        contexts: PRNode.CheckContextConnection(
+                            totalCount: 150,
+                            nodes: [
+                                .fixture(name: "build", status: "COMPLETED", conclusion: "SUCCESS"),
+                            ]
+                        )
+                    )
+                ))
+            ])
+        )
+        let result = service.extractRollupData(from: node)
+        #expect(result != nil)
+        #expect(result?.totalCount == 150)
+        #expect(result?.contextNodes.count == 1)
+    }
+
+    // MARK: - parseCheckStatus: no rollup data returns unknown
+
+    @Test func parseCheckStatusNoRollupReturnsUnknown() {
+        let node = PRNode.fixture()
+        let result = service.parseCheckStatus(from: node)
+        #expect(result.status == .unknown)
+        #expect(result.total == 0)
+        #expect(result.checkResults.isEmpty)
+    }
+
+    // MARK: - resolveOverallStatus: additional rollup fallback paths
+
+    @Test func resolveOverallStatusFallbackToRollupPending() {
+        let result = service.resolveOverallStatus(
+            totalCount: 2, passed: 0, failed: 0, pending: 0, rollupState: "PENDING"
+        )
+        #expect(result == .pending)
+    }
+
+    @Test func resolveOverallStatusFallbackToRollupUnknown() {
+        let result = service.resolveOverallStatus(
+            totalCount: 2, passed: 0, failed: 0, pending: 0, rollupState: "SOMETHING_ELSE"
+        )
+        #expect(result == .unknown)
+    }
+
+    @Test func resolveOverallStatusFallbackToRollupError() {
+        let result = service.resolveOverallStatus(
+            totalCount: 2, passed: 0, failed: 0, pending: 0, rollupState: "ERROR"
+        )
+        #expect(result == .failure)
+    }
+
     // MARK: - resolveOverallStatus (now takes String? instead of [String: Any])
 
     @Test func resolveOverallStatusEmpty() {
@@ -225,6 +346,11 @@ import Foundation
 
     @Test func convertNodeSingleSegmentRepo() {
         let node = PRNode.fixture(nameWithOwner: "noslash")
+        #expect(service.convertNode(node) == nil)
+    }
+
+    @Test func convertNodeThreeSegmentRepo() {
+        let node = PRNode.fixture(nameWithOwner: "too/many/segments")
         #expect(service.convertNode(node) == nil)
     }
 

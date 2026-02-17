@@ -62,3 +62,146 @@ import SwiftUI
         #expect(pr.displayNumber == "#99")
     }
 }
+
+// MARK: - CIStatus Color Tests
+
+@Suite struct CIStatusColorTests {
+    @Test func successColorIsGreen() {
+        #expect(PullRequest.CIStatus.success.color == .green)
+    }
+
+    @Test func failureColorIsRed() {
+        #expect(PullRequest.CIStatus.failure.color == .red)
+    }
+
+    @Test func pendingColorIsOrange() {
+        #expect(PullRequest.CIStatus.pending.color == .orange)
+    }
+
+    @Test func unknownColorIsSecondary() {
+        #expect(PullRequest.CIStatus.unknown.color == .secondary)
+    }
+}
+
+// MARK: - Readiness Tests
+
+@Suite struct ReadinessTests {
+    // Default mode (no required checks)
+
+    @Test func openPRWithPassingCIIsReady() {
+        let pr = PullRequest.fixture(state: .open, ciStatus: .success, mergeable: .mergeable)
+        #expect(pr.isReady(requiredChecks: []))
+    }
+
+    @Test func draftPRIsNotReady() {
+        let pr = PullRequest.fixture(state: .draft, ciStatus: .success)
+        #expect(!pr.isReady(requiredChecks: []))
+    }
+
+    @Test func conflictingPRIsNotReady() {
+        let pr = PullRequest.fixture(state: .open, ciStatus: .success, mergeable: .conflicting)
+        #expect(!pr.isReady(requiredChecks: []))
+    }
+
+    @Test func failingCIIsNotReadyInDefaultMode() {
+        let pr = PullRequest.fixture(state: .open, ciStatus: .failure)
+        #expect(!pr.isReady(requiredChecks: []))
+    }
+
+    @Test func pendingCIIsNotReadyInDefaultMode() {
+        let pr = PullRequest.fixture(state: .open, ciStatus: .pending)
+        #expect(!pr.isReady(requiredChecks: []))
+    }
+
+    @Test func unknownCIIsReadyInDefaultMode() {
+        let pr = PullRequest.fixture(state: .open, ciStatus: .unknown)
+        #expect(pr.isReady(requiredChecks: []))
+    }
+
+    // Required checks mode
+
+    @Test func requiredCheckPassingIsReady() {
+        let pr = PullRequest.fixture(
+            state: .open, ciStatus: .failure,
+            checkResults: [
+                .init(name: "Bazel-Pipeline-PR", status: .passed, detailsUrl: nil),
+                .init(name: "lint", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(pr.isReady(requiredChecks: ["Bazel-Pipeline-PR"]))
+    }
+
+    @Test func requiredCheckFailingIsNotReady() {
+        let pr = PullRequest.fixture(
+            state: .open,
+            checkResults: [
+                .init(name: "Bazel-Pipeline-PR", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(!pr.isReady(requiredChecks: ["Bazel-Pipeline-PR"]))
+    }
+
+    @Test func requiredCheckMissingIsIgnored() {
+        let pr = PullRequest.fixture(state: .open, checkResults: [])
+        #expect(pr.isReady(requiredChecks: ["Bazel-Pipeline-PR"]))
+    }
+
+    @Test func requiredCheckMissingWithOtherCheckPresent() {
+        let pr = PullRequest.fixture(
+            state: .open,
+            checkResults: [
+                .init(name: "android-build", status: .passed, detailsUrl: nil),
+            ]
+        )
+        #expect(pr.isReady(requiredChecks: ["Bazel-Pipeline-PR", "android-build"]))
+    }
+
+    @Test func requiredCheckPresentButFailingIsNotReady() {
+        let pr = PullRequest.fixture(
+            state: .open,
+            checkResults: [
+                .init(name: "Bazel-Pipeline-PR", status: .failed, detailsUrl: nil),
+                .init(name: "android-build", status: .passed, detailsUrl: nil),
+            ]
+        )
+        #expect(!pr.isReady(requiredChecks: ["Bazel-Pipeline-PR", "android-build"]))
+    }
+
+    @Test func allRequiredChecksMissingIsReady() {
+        let pr = PullRequest.fixture(state: .open, checkResults: [
+            .init(name: "unrelated-check", status: .passed, detailsUrl: nil),
+        ])
+        #expect(pr.isReady(requiredChecks: ["Bazel-Pipeline-PR", "ios-lint"]))
+    }
+
+    @Test func multipleRequiredChecksAllMustPass() {
+        let pr = PullRequest.fixture(
+            state: .open,
+            checkResults: [
+                .init(name: "build", status: .passed, detailsUrl: nil),
+                .init(name: "lint", status: .pending, detailsUrl: nil),
+            ]
+        )
+        #expect(!pr.isReady(requiredChecks: ["build", "lint"]))
+    }
+
+    @Test func requiredChecksDontOverrideDraftStatus() {
+        let pr = PullRequest.fixture(
+            state: .draft,
+            checkResults: [
+                .init(name: "build", status: .passed, detailsUrl: nil),
+            ]
+        )
+        #expect(!pr.isReady(requiredChecks: ["build"]))
+    }
+
+    @Test func requiredChecksDontOverrideConflicts() {
+        let pr = PullRequest.fixture(
+            state: .open, mergeable: .conflicting,
+            checkResults: [
+                .init(name: "build", status: .passed, detailsUrl: nil),
+            ]
+        )
+        #expect(!pr.isReady(requiredChecks: ["build"]))
+    }
+}

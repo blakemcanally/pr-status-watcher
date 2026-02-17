@@ -8,4 +8,6 @@ protocol SettingsStoreProtocol {
     func saveCollapsedRepos(_ value: Set<String>)
     func loadFilterSettings() -> FilterSettings
     func saveFilterSettings(_ value: FilterSettings)
+    func loadCollapsedReadinessSections() -> Set<String>
+    func saveCollapsedReadinessSections(_ value: Set<String>)
 }

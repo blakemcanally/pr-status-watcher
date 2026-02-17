@@ -5,10 +5,12 @@ final class MockSettingsStore: SettingsStoreProtocol {
     var refreshInterval: Int = 60
     var collapsedRepos: Set<String> = []
     var filterSettings: FilterSettings = FilterSettings()
+    var savedCollapsedReadinessSections: Set<String> = ["notReady"]
 
     var saveRefreshIntervalCallCount = 0
     var saveCollapsedReposCallCount = 0
     var saveFilterSettingsCallCount = 0
+    var saveCollapsedReadinessSectionsCallCount = 0
 
     func loadRefreshInterval() -> Int { refreshInterval }
     func saveRefreshInterval(_ value: Int) {
@@ -24,5 +26,10 @@ final class MockSettingsStore: SettingsStoreProtocol {
     func saveFilterSettings(_ value: FilterSettings) {
         saveFilterSettingsCallCount += 1
         filterSettings = value
+    }
+    func loadCollapsedReadinessSections() -> Set<String> { savedCollapsedReadinessSections }
+    func saveCollapsedReadinessSections(_ value: Set<String>) {
+        saveCollapsedReadinessSectionsCallCount += 1
+        savedCollapsedReadinessSections = value
     }
 }

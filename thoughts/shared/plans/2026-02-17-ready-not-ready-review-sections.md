@@ -564,14 +564,14 @@ Add tests for `requiredCheckNames` serialization:
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] Build succeeds: `swift build`
-- [ ] All existing tests pass: `swift test`
-- [ ] New readiness predicate tests pass
-- [ ] New FilterSettings serialization tests pass
-- [ ] New `tallyCheckContexts` allChecks tests pass
+- [x] Build succeeds: `swift build`
+- [x] All existing tests pass: `swift test`
+- [x] New readiness predicate tests pass
+- [x] New FilterSettings serialization tests pass
+- [x] New `tallyCheckContexts` allChecks tests pass
 
 #### Manual Verification:
-- [ ] N/A — no UI changes in this phase
+- [x] N/A — no UI changes in this phase
 
 **Implementation Note:** After completing this phase and all automated verification passes, proceed to Phase 2.
 
@@ -698,12 +698,12 @@ func saveCollapsedReadinessSections(_ value: Set<String>) {
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] Build succeeds: `swift build`
-- [ ] All tests pass: `swift test`
-- [ ] Collapsed readiness sections persist across load/save cycle (add unit test to `SettingsStoreTests`)
+- [x] Build succeeds: `swift build`
+- [x] All tests pass: `swift test`
+- [x] Collapsed readiness sections persist across load/save cycle (add unit test to `SettingsStoreTests`)
 
 #### Manual Verification:
-- [ ] N/A — no UI changes in this phase
+- [x] N/A — no UI changes in this phase
 
 **Implementation Note:** After completing this phase and all automated verification passes, proceed to Phase 3.
 
@@ -917,8 +917,8 @@ The existing `filteredEmptyState` already handles this — if `filteredPRs.isEmp
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] Build succeeds: `swift build`
-- [ ] All tests pass: `swift test`
+- [x] Build succeeds: `swift build`
+- [x] All tests pass: `swift test`
 
 #### Manual Verification:
 - [ ] Reviews tab shows "Ready for Review" and "Not Ready" sections
@@ -1088,8 +1088,8 @@ private var checkNameSuggestions: [String] {
 ### Success Criteria
 
 #### Automated Verification:
-- [ ] Build succeeds: `swift build`
-- [ ] All tests pass: `swift test`
+- [x] Build succeeds: `swift build`
+- [x] All tests pass: `swift test`
 
 #### Manual Verification:
 - [ ] Settings shows "Review Readiness" section with title and description

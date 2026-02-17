@@ -132,8 +132,24 @@ enum Strings {
         static let noPRsSubtitle = "Your open, draft, and queued PRs will appear here automatically"
         static let noReviewsTitle = "No review requests"
         static let noReviewsSubtitle = "Pull requests where your review is requested will appear here"
-        static let filteredTitle = "All review requests hidden"
-        static let filteredSubtitle = "Adjust your review filters in Settings to see more PRs"
+        static let filteredTitle = "All review requests are drafts"
+        static let filteredSubtitle = "Disable \"Hide draft PRs\" in Settings to see them"
+    }
+
+    // MARK: Readiness
+
+    enum Readiness {
+        static func readyForReview(_ count: Int) -> String {
+            "Ready for Review (\(count))"
+        }
+        static func notReady(_ count: Int) -> String {
+            "Not Ready (\(count))"
+        }
+        static let settingsTitle = "Review Readiness"
+        static let settingsDescription = "PRs won't appear as \"Ready for Review\" until these checks pass."
+        static let addCheckPlaceholder = "Add check name..."
+        static let requiredChecksLabel = "Required CI Checks"
+        static let tipText = "Check names must match the exact name shown in GitHub CI. Checks not present on a PR are ignored."
     }
 
     // MARK: Auth

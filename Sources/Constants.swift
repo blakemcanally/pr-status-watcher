@@ -34,6 +34,7 @@ enum AppConstants {
         static let pollingInterval = "polling_interval"
         static let collapsedRepos = "collapsed_repos"
         static let filterSettings = "filter_settings"
+        static let collapsedReadinessSections = "collapsedReadinessSections"
     }
 
     // MARK: Notification

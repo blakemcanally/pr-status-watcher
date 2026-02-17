@@ -26,6 +26,7 @@ struct PullRequest: Identifiable, Codable, Equatable {
     var queuePosition: Int?
     var approvalCount: Int
     var failedChecks: [CheckInfo]
+    var checkResults: [CheckResult]
 
     var repoFullName: String { "\(owner)/\(repo)" }
     var displayNumber: String { "#\(number)" }
@@ -114,30 +115,59 @@ struct PullRequest: Identifiable, Codable, Equatable {
         let name: String
         let detailsUrl: URL?
     }
+
+    // MARK: Check Result (all checks, not just failed)
+
+    enum CheckStatus: String, Codable {
+        case passed
+        case failed
+        case pending
+    }
+
+    struct CheckResult: Codable, Equatable {
+        let name: String
+        let status: CheckStatus
+        let detailsUrl: URL?
+    }
+
+    // MARK: Readiness
+
+    /// Whether this PR is ready for review given the user's required-check configuration.
+    func isReady(requiredChecks: [String]) -> Bool {
+        guard state != .draft else { return false }
+        guard mergeable != .conflicting else { return false }
+
+        if requiredChecks.isEmpty {
+            // No specific checks configured — use overall CI rollup
+            return ciStatus != .failure && ciStatus != .pending
+        }
+
+        // Only evaluate the named required checks.
+        // If a required check name isn't present on this PR (e.g., the repo
+        // doesn't have that CI job), it's ignored — assumed passing.
+        for name in requiredChecks {
+            guard let check = checkResults.first(where: { $0.name == name }) else {
+                continue
+            }
+            if check.status != .passed { return false }
+        }
+        return true
+    }
 }
 
 // MARK: - Review Filter Settings
 
-/// User preferences for hiding PRs on the Reviews tab that aren't ready for review.
+/// User preferences for the Reviews tab.
 struct FilterSettings: Codable, Equatable {
     var hideDrafts: Bool
-    var hideCIFailing: Bool
-    var hideCIPending: Bool
-    var hideConflicting: Bool
-    var hideApproved: Bool
+    var requiredCheckNames: [String]
 
     init(
         hideDrafts: Bool = true,
-        hideCIFailing: Bool = false,
-        hideCIPending: Bool = false,
-        hideConflicting: Bool = false,
-        hideApproved: Bool = false
+        requiredCheckNames: [String] = []
     ) {
         self.hideDrafts = hideDrafts
-        self.hideCIFailing = hideCIFailing
-        self.hideCIPending = hideCIPending
-        self.hideConflicting = hideConflicting
-        self.hideApproved = hideApproved
+        self.requiredCheckNames = requiredCheckNames
     }
 
     // Custom decoder: use decodeIfPresent so that adding new filter
@@ -145,20 +175,13 @@ struct FilterSettings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         hideDrafts = try container.decodeIfPresent(Bool.self, forKey: .hideDrafts) ?? true
-        hideCIFailing = try container.decodeIfPresent(Bool.self, forKey: .hideCIFailing) ?? false
-        hideCIPending = try container.decodeIfPresent(Bool.self, forKey: .hideCIPending) ?? false
-        hideConflicting = try container.decodeIfPresent(Bool.self, forKey: .hideConflicting) ?? false
-        hideApproved = try container.decodeIfPresent(Bool.self, forKey: .hideApproved) ?? false
+        requiredCheckNames = try container.decodeIfPresent([String].self, forKey: .requiredCheckNames) ?? []
     }
 
-    /// Filter a list of PRs for the Reviews tab, removing PRs that match enabled filters.
+    /// Filter a list of PRs for the Reviews tab, removing draft PRs when configured.
     func applyReviewFilters(to prs: [PullRequest]) -> [PullRequest] {
         prs.filter { pr in
             if hideDrafts && pr.state == .draft { return false }
-            if hideCIFailing && pr.ciStatus == .failure { return false }
-            if hideCIPending && pr.ciStatus == .pending { return false }
-            if hideConflicting && pr.mergeable == .conflicting { return false }
-            if hideApproved && pr.reviewDecision == .approved { return false }
             return true
         }
     }

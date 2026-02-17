@@ -29,6 +29,24 @@ struct ContentView: View {
         PRGrouping.grouped(prs: filteredPRs, isReviews: selectedTab == .reviews)
     }
 
+    // MARK: - Readiness Partitioning (Reviews tab only)
+
+    private var readyPRs: [PullRequest] {
+        filteredPRs.filter { $0.isReady(requiredChecks: manager.filterSettings.requiredCheckNames) }
+    }
+
+    private var notReadyPRs: [PullRequest] {
+        filteredPRs.filter { !$0.isReady(requiredChecks: manager.filterSettings.requiredCheckNames) }
+    }
+
+    private var groupedReadyPRs: [(repo: String, prs: [PullRequest])] {
+        PRGrouping.grouped(prs: readyPRs, isReviews: true)
+    }
+
+    private var groupedNotReadyPRs: [(repo: String, prs: [PullRequest])] {
+        PRGrouping.grouped(prs: notReadyPRs, isReviews: true)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             header
@@ -95,6 +113,8 @@ struct ContentView: View {
                 emptyState
             } else if filteredPRs.isEmpty {
                 filteredEmptyState
+            } else if selectedTab == .reviews {
+                reviewsReadinessList
             } else {
                 ScrollView {
                     LazyVStack(spacing: 0) {
@@ -107,6 +127,112 @@ struct ContentView: View {
             }
         }
         .frame(maxHeight: .infinity)
+    }
+
+    // MARK: - Reviews Readiness List
+
+    private var reviewsReadinessList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                if !readyPRs.isEmpty {
+                    readinessSection(
+                        key: "ready",
+                        title: Strings.Readiness.readyForReview(readyPRs.count),
+                        icon: "checkmark.circle.fill",
+                        color: .green,
+                        groups: groupedReadyPRs
+                    )
+                }
+                if !notReadyPRs.isEmpty {
+                    readinessSection(
+                        key: "notReady",
+                        title: Strings.Readiness.notReady(notReadyPRs.count),
+                        icon: "clock.fill",
+                        color: .secondary,
+                        groups: groupedNotReadyPRs
+                    )
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    // MARK: - Readiness Section
+
+    private func readinessSection(
+        key: String,
+        title: String,
+        icon: String,
+        color: Color,
+        groups: [(repo: String, prs: [PullRequest])]
+    ) -> some View {
+        let isCollapsed = manager.collapsedReadinessSections.contains(key)
+
+        return VStack(spacing: 0) {
+            readinessSectionHeader(
+                key: key,
+                title: title,
+                icon: icon,
+                color: color,
+                isCollapsed: isCollapsed,
+                prs: groups.flatMap(\.prs)
+            )
+
+            if !isCollapsed {
+                ForEach(groups, id: \.repo) { group in
+                    repoSection(repo: group.repo, prs: group.prs)
+                }
+            }
+        }
+    }
+
+    private func readinessSectionHeader(
+        key: String,
+        title: String,
+        icon: String,
+        color: Color,
+        isCollapsed: Bool,
+        prs: [PullRequest]
+    ) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                manager.toggleReadinessSectionCollapsed(key)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundColor(color)
+                    .rotationEffect(.degrees(isCollapsed ? 0 : 90))
+
+                Image(systemName: icon)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(color)
+
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundColor(color)
+
+                Spacer()
+
+                if isCollapsed {
+                    HStack(spacing: 3) {
+                        ForEach(prs) { pullRequest in
+                            Circle()
+                                .fill(pullRequest.statusColor)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(Color.secondary.opacity(0.08))
+        .accessibilityLabel("\(title), \(isCollapsed ? "collapsed" : "expanded")")
+        .accessibilityHint("Double-tap to \(isCollapsed ? "expand" : "collapse")")
     }
 
     // MARK: - Repo Section

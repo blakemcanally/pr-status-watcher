@@ -2,8 +2,6 @@
 
 A lightweight macOS menu bar app that automatically tracks all of your open GitHub pull requests. See CI status, merge queue position, draft state, and more -- without ever leaving your desktop.
 
-![PR Status Watcher](screenshot.png)
-
 ## What it does
 
 - **Auto-discovers** all of your open, draft, and queued PRs -- no manual setup
@@ -84,6 +82,8 @@ Sources/
 ├── Constants.swift                # Centralized configuration constants (layout, keys, limits)
 ├── ContentView.swift              # Main UI with tabs, grouped/collapsible repo sections
 ├── GitHubService.swift            # GraphQL queries via gh CLI, PATH-based binary resolution
+├── GitHubService+CheckStatusParsing.swift  # CI check status tallying and classification
+├── GitHubService+NodeConversion.swift      # GraphQL node → PullRequest conversion
 ├── GitHubServiceProtocol.swift    # Protocol for dependency injection
 ├── Models.swift                   # PullRequest model, state & CI enums, FilterSettings
 ├── NotificationDispatcher.swift   # macOS notification delivery with structured logging
@@ -94,7 +94,7 @@ Sources/
 ├── PRStatusSummary.swift          # Pure functions for menu bar state derivation
 ├── SettingsStore.swift            # UserDefaults persistence with error logging
 ├── SettingsStoreProtocol.swift    # Protocol for settings injection
-├── SettingsView.swift             # Settings (auth, launch at login, polling, review filters)
+├── SettingsView.swift             # Settings (auth, launch at login, polling, review readiness)
 ├── StatusChangeDetector.swift     # Diff-based notification trigger logic
 ├── StatusNotification.swift       # Notification model
 └── Strings.swift                  # User-facing strings (localization-ready)

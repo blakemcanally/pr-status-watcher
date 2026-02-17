@@ -225,10 +225,10 @@ import Foundation
         let manager = makeManager()
         // didSet fires once during init, so reset the count
         let initialCount = mockSettings.saveFilterSettingsCallCount
-        manager.filterSettings = FilterSettings(hideDrafts: false, hideCIFailing: true)
+        manager.filterSettings = FilterSettings(hideDrafts: false, requiredCheckNames: ["build"])
 
         #expect(mockSettings.saveFilterSettingsCallCount == initialCount + 1)
-        #expect(mockSettings.filterSettings == FilterSettings(hideDrafts: false, hideCIFailing: true))
+        #expect(mockSettings.filterSettings == FilterSettings(hideDrafts: false, requiredCheckNames: ["build"]))
     }
 
     @Test func refreshIntervalDidSetSavesToStore() {
@@ -284,6 +284,145 @@ import Foundation
         manager.toggleRepoCollapsed("org/repo")
 
         #expect(mockSettings.saveCollapsedReposCallCount == initialCount + 1)
+    }
+
+    // MARK: - toggleReadinessSectionCollapsed
+
+    @Test func toggleReadinessSectionCollapsedAddsSection() {
+        let manager = makeManager()
+        manager.collapsedReadinessSections = []
+
+        manager.toggleReadinessSectionCollapsed("notReady")
+
+        #expect(manager.collapsedReadinessSections.contains("notReady"))
+    }
+
+    @Test func toggleReadinessSectionCollapsedRemovesSection() {
+        let manager = makeManager()
+        manager.collapsedReadinessSections = ["notReady"]
+
+        manager.toggleReadinessSectionCollapsed("notReady")
+
+        #expect(!manager.collapsedReadinessSections.contains("notReady"))
+    }
+
+    @Test func toggleReadinessSectionCollapsedSavesToStore() {
+        let manager = makeManager()
+        let initialCount = mockSettings.saveCollapsedReadinessSectionsCallCount
+
+        manager.toggleReadinessSectionCollapsed("ready")
+
+        #expect(mockSettings.saveCollapsedReadinessSectionsCallCount == initialCount + 1)
+    }
+
+    // MARK: - availableCheckNames
+
+    @Test func availableCheckNamesAggregatesFromReviewPRs() async {
+        mockService.myPRsResult = .success([])
+        mockService.reviewPRsResult = .success([
+            PullRequest.fixture(number: 1, checkResults: [
+                .init(name: "build", status: .passed, detailsUrl: nil),
+                .init(name: "lint", status: .failed, detailsUrl: nil),
+            ]),
+            PullRequest.fixture(number: 2, checkResults: [
+                .init(name: "build", status: .passed, detailsUrl: nil),
+                .init(name: "test", status: .pending, detailsUrl: nil),
+            ]),
+        ])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.availableCheckNames == ["build", "lint", "test"])
+    }
+
+    @Test func availableCheckNamesEmptyWhenNoReviewPRs() {
+        let manager = makeManager()
+        #expect(manager.availableCheckNames.isEmpty)
+    }
+
+    // MARK: - Delegated Computed Properties
+
+    @Test func refreshIntervalLabelDelegatesToSummary() {
+        let manager = makeManager()
+        manager.refreshInterval = 120
+        #expect(manager.refreshIntervalLabel == "2 min")
+    }
+
+    @Test func openCountDelegatesToSummary() async {
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(number: 1, state: .open),
+            PullRequest.fixture(number: 2, state: .draft),
+            PullRequest.fixture(number: 3, state: .open),
+        ])
+        mockService.reviewPRsResult = .success([])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.openCount == 2)
+    }
+
+    @Test func draftCountDelegatesToSummary() async {
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(number: 1, state: .draft),
+            PullRequest.fixture(number: 2, state: .open),
+        ])
+        mockService.reviewPRsResult = .success([])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.draftCount == 1)
+    }
+
+    @Test func queuedCountDelegatesToSummary() async {
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(number: 1, state: .open, isInMergeQueue: true),
+            PullRequest.fixture(number: 2, state: .open),
+        ])
+        mockService.reviewPRsResult = .success([])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.queuedCount == 1)
+    }
+
+    @Test func statusBarSummaryIncludesBothCounts() async {
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(number: 1),
+            PullRequest.fixture(number: 2),
+        ])
+        mockService.reviewPRsResult = .success([
+            PullRequest.fixture(number: 10),
+        ])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.statusBarSummary == "2 | 1")
+    }
+
+    @Test func statusBarSummaryFiltersDraftsFromReviews() async {
+        mockService.myPRsResult = .success([])
+        mockService.reviewPRsResult = .success([
+            PullRequest.fixture(number: 1, state: .open),
+            PullRequest.fixture(number: 2, state: .draft),
+        ])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        // hideDrafts is true by default
+        await manager.refreshAll()
+
+        // Only non-draft review PR counted
+        #expect(manager.statusBarSummary == "0 | 1")
     }
 
     // MARK: - Error Type Propagation

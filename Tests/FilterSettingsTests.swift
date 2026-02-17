@@ -27,7 +27,8 @@ extension PullRequest {
         mergeable: MergeableState = .mergeable,
         queuePosition: Int? = nil,
         approvalCount: Int = 0,
-        failedChecks: [CheckInfo] = []
+        failedChecks: [CheckInfo] = [],
+        checkResults: [CheckResult] = []
     ) -> PullRequest {
         PullRequest(
             owner: owner,
@@ -49,7 +50,8 @@ extension PullRequest {
             mergeable: mergeable,
             queuePosition: queuePosition,
             approvalCount: approvalCount,
-            failedChecks: failedChecks
+            failedChecks: failedChecks,
+            checkResults: checkResults
         )
     }
 }
@@ -61,20 +63,8 @@ extension PullRequest {
         #expect(FilterSettings().hideDrafts)
     }
 
-    @Test func defaultHideCIFailingIsFalse() {
-        #expect(!FilterSettings().hideCIFailing)
-    }
-
-    @Test func defaultHideCIPendingIsFalse() {
-        #expect(!FilterSettings().hideCIPending)
-    }
-
-    @Test func defaultHideConflictingIsFalse() {
-        #expect(!FilterSettings().hideConflicting)
-    }
-
-    @Test func defaultHideApprovedIsFalse() {
-        #expect(!FilterSettings().hideApproved)
+    @Test func defaultRequiredCheckNamesIsEmpty() {
+        #expect(FilterSettings().requiredCheckNames.isEmpty)
     }
 }
 
@@ -89,13 +79,7 @@ extension PullRequest {
     }
 
     @Test func codableRoundTripCustomValues() throws {
-        let original = FilterSettings(
-            hideDrafts: false,
-            hideCIFailing: true,
-            hideCIPending: true,
-            hideConflicting: true,
-            hideApproved: true
-        )
+        let original = FilterSettings(hideDrafts: false, requiredCheckNames: ["build"])
         let data = try JSONEncoder().encode(original)
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
         #expect(decoded == original)
@@ -111,19 +95,26 @@ extension PullRequest {
         let json = #"{"hideDrafts": false}"#.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: json)
         #expect(!decoded.hideDrafts)
-        // All other properties should have their defaults
-        #expect(!decoded.hideCIFailing)
-        #expect(!decoded.hideCIPending)
-        #expect(!decoded.hideConflicting)
-        #expect(!decoded.hideApproved)
+        #expect(decoded.requiredCheckNames.isEmpty)
+    }
+
+    @Test func codableRoundTripWithRequiredCheckNames() throws {
+        let original = FilterSettings(requiredCheckNames: ["build", "lint"])
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
+        #expect(decoded.requiredCheckNames == ["build", "lint"])
+    }
+
+    @Test func decodingWithoutRequiredCheckNamesDefaultsToEmpty() throws {
+        let json = #"{"hideDrafts": true}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: json)
+        #expect(decoded.requiredCheckNames.isEmpty)
     }
 }
 
-// MARK: - Filter Predicate: Individual Filters
+// MARK: - Filter Predicate: hideDrafts
 
 @Suite struct FilterPredicateTests {
-    // MARK: hideDrafts
-
     @Test func defaultSettingsHideDraftPRs() {
         let prs = [
             PullRequest.fixture(number: 1, state: .draft),
@@ -146,147 +137,26 @@ extension PullRequest {
         let result = FilterSettings().applyReviewFilters(to: prs)
         #expect(result.count == 1)
     }
-
-    // MARK: hideCIFailing
-
-    @Test func hideCIFailingFiltersFailingPRs() {
-        let settings = FilterSettings(hideDrafts: false, hideCIFailing: true)
-        let prs = [
-            PullRequest.fixture(number: 1, ciStatus: .failure),
-            PullRequest.fixture(number: 2, ciStatus: .success),
-        ]
-        let result = settings.applyReviewFilters(to: prs)
-        #expect(result.count == 1)
-        #expect(result.first?.number == 2)
-    }
-
-    @Test func hideCIFailingDoesNotAffectPendingOrSuccess() {
-        let settings = FilterSettings(hideDrafts: false, hideCIFailing: true)
-        let prs = [
-            PullRequest.fixture(number: 1, ciStatus: .pending),
-            PullRequest.fixture(number: 2, ciStatus: .success),
-            PullRequest.fixture(number: 3, ciStatus: .unknown),
-        ]
-        let result = settings.applyReviewFilters(to: prs)
-        #expect(result.count == 3)
-    }
-
-    // MARK: hideCIPending
-
-    @Test func hideCIPendingFiltersPendingPRs() {
-        let settings = FilterSettings(hideDrafts: false, hideCIPending: true)
-        let prs = [
-            PullRequest.fixture(number: 1, ciStatus: .pending),
-            PullRequest.fixture(number: 2, ciStatus: .success),
-        ]
-        let result = settings.applyReviewFilters(to: prs)
-        #expect(result.count == 1)
-        #expect(result.first?.number == 2)
-    }
-
-    @Test func hideCIPendingDoesNotAffectFailureOrSuccess() {
-        let settings = FilterSettings(hideDrafts: false, hideCIPending: true)
-        let prs = [
-            PullRequest.fixture(number: 1, ciStatus: .failure),
-            PullRequest.fixture(number: 2, ciStatus: .success),
-        ]
-        let result = settings.applyReviewFilters(to: prs)
-        #expect(result.count == 2)
-    }
-
-    // MARK: hideConflicting
-
-    @Test func hideConflictingFiltersConflictingPRs() {
-        let settings = FilterSettings(hideDrafts: false, hideConflicting: true)
-        let prs = [
-            PullRequest.fixture(number: 1, mergeable: .conflicting),
-            PullRequest.fixture(number: 2, mergeable: .mergeable),
-        ]
-        let result = settings.applyReviewFilters(to: prs)
-        #expect(result.count == 1)
-        #expect(result.first?.number == 2)
-    }
-
-    @Test func hideConflictingDoesNotFilterUnknownMergeable() {
-        let settings = FilterSettings(hideDrafts: false, hideConflicting: true)
-        let prs = [PullRequest.fixture(mergeable: .unknown)]
-        let result = settings.applyReviewFilters(to: prs)
-        #expect(result.count == 1)
-    }
-
-    // MARK: hideApproved
-
-    @Test func hideApprovedFiltersApprovedPRs() {
-        let settings = FilterSettings(hideDrafts: false, hideApproved: true)
-        let prs = [
-            PullRequest.fixture(number: 1, reviewDecision: .approved),
-            PullRequest.fixture(number: 2, reviewDecision: .reviewRequired),
-        ]
-        let result = settings.applyReviewFilters(to: prs)
-        #expect(result.count == 1)
-        #expect(result.first?.number == 2)
-    }
-
-    @Test func hideApprovedDoesNotAffectOtherDecisions() {
-        let settings = FilterSettings(hideDrafts: false, hideApproved: true)
-        let prs = [
-            PullRequest.fixture(number: 1, reviewDecision: .reviewRequired),
-            PullRequest.fixture(number: 2, reviewDecision: .changesRequested),
-            PullRequest.fixture(number: 3, reviewDecision: .none),
-        ]
-        let result = settings.applyReviewFilters(to: prs)
-        #expect(result.count == 3)
-    }
 }
 
-// MARK: - Filter Predicate: Combinations & Edge Cases
+// MARK: - Filter Edge Cases
 
 @Suite struct FilterCombinationTests {
-    @Test func multipleFiltersApplySimultaneously() {
-        let settings = FilterSettings(
-            hideDrafts: true,
-            hideCIFailing: true,
-            hideConflicting: true
-        )
+    @Test func hideDraftsLeavesNonDraftPRs() {
+        let settings = FilterSettings(hideDrafts: true)
         let prs = [
-            PullRequest.fixture(number: 1, state: .draft),                           // hidden: draft
-            PullRequest.fixture(number: 2, ciStatus: .failure),                       // hidden: CI failing
-            PullRequest.fixture(number: 3, mergeable: .conflicting),                  // hidden: conflicts
-            PullRequest.fixture(number: 4, state: .open, ciStatus: .success),         // visible
+            PullRequest.fixture(number: 1, state: .draft),
+            PullRequest.fixture(number: 2, ciStatus: .failure),
+            PullRequest.fixture(number: 3, mergeable: .conflicting),
+            PullRequest.fixture(number: 4, state: .open, ciStatus: .success),
         ]
         let result = settings.applyReviewFilters(to: prs)
-        #expect(result.count == 1)
-        #expect(result.first?.number == 4)
-    }
-
-    @Test func allFiltersEnabledOnlyShowsCleanOpenPRs() {
-        let settings = FilterSettings(
-            hideDrafts: true,
-            hideCIFailing: true,
-            hideCIPending: true,
-            hideConflicting: true,
-            hideApproved: true
-        )
-        // This PR is: open, CI success, mergeable, review required — passes all filters
-        let clean = PullRequest.fixture(
-            number: 1,
-            state: .open,
-            ciStatus: .success,
-            reviewDecision: .reviewRequired,
-            mergeable: .mergeable
-        )
-        let result = settings.applyReviewFilters(to: [clean])
-        #expect(result.count == 1)
+        #expect(result.count == 3)
+        #expect(result.map(\.number) == [2, 3, 4])
     }
 
     @Test func noFiltersEnabledReturnsAllPRs() {
-        let settings = FilterSettings(
-            hideDrafts: false,
-            hideCIFailing: false,
-            hideCIPending: false,
-            hideConflicting: false,
-            hideApproved: false
-        )
+        let settings = FilterSettings(hideDrafts: false)
         let prs = [
             PullRequest.fixture(number: 1, state: .draft),
             PullRequest.fixture(number: 2, ciStatus: .failure),
@@ -325,18 +195,6 @@ extension PullRequest {
         let result = settings.applyReviewFilters(to: prs)
         #expect(result.map(\.number) == [5, 1, 2])
     }
-
-    @Test func prMatchingMultipleFiltersIsHiddenOnce() {
-        // A draft PR with failing CI and conflicts — should be hidden, not double-counted
-        let settings = FilterSettings(
-            hideDrafts: true,
-            hideCIFailing: true,
-            hideConflicting: true
-        )
-        let pr = PullRequest.fixture(state: .draft, ciStatus: .failure, mergeable: .conflicting)
-        let result = settings.applyReviewFilters(to: [pr])
-        #expect(result.isEmpty)
-    }
 }
 
 // MARK: - FilterSettings Persistence
@@ -353,13 +211,7 @@ extension PullRequest {
     }
 
     @Test func persistAndReloadViaUserDefaults() throws {
-        let original = FilterSettings(
-            hideDrafts: false,
-            hideCIFailing: true,
-            hideCIPending: true,
-            hideConflicting: true,
-            hideApproved: true
-        )
+        let original = FilterSettings(hideDrafts: false, requiredCheckNames: ["build"])
         let data = try JSONEncoder().encode(original)
         UserDefaults.standard.set(data, forKey: testKey)
 

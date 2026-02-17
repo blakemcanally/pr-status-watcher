@@ -67,7 +67,7 @@ import Foundation
     }
 
     @Test func loadFilterSettingsReturnsSavedValue() throws {
-        let custom = FilterSettings(hideDrafts: false, hideCIFailing: true)
+        let custom = FilterSettings(hideDrafts: false, requiredCheckNames: ["build"])
         let data = try JSONEncoder().encode(custom)
         defaults.set(data, forKey: SettingsStore.filterSettingsKey)
         #expect(store.loadFilterSettings() == custom)
@@ -79,7 +79,7 @@ import Foundation
     }
 
     @Test func saveFilterSettingsPersists() throws {
-        let custom = FilterSettings(hideDrafts: false, hideCIPending: true, hideApproved: true)
+        let custom = FilterSettings(hideDrafts: false, requiredCheckNames: ["lint"])
         store.saveFilterSettings(custom)
         let data = try #require(defaults.data(forKey: SettingsStore.filterSettingsKey))
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
@@ -87,13 +87,7 @@ import Foundation
     }
 
     @Test func saveAndLoadRoundTrip() {
-        let settings = FilterSettings(
-            hideDrafts: false,
-            hideCIFailing: true,
-            hideCIPending: true,
-            hideConflicting: true,
-            hideApproved: true
-        )
+        let settings = FilterSettings(hideDrafts: false, requiredCheckNames: ["build", "lint"])
         store.saveFilterSettings(settings)
         #expect(store.loadFilterSettings() == settings)
     }
@@ -102,5 +96,32 @@ import Foundation
         // Store an Int where we expect Data — SettingsStore should handle gracefully
         defaults.set(42, forKey: SettingsStore.filterSettingsKey)
         #expect(store.loadFilterSettings() == FilterSettings())
+    }
+
+    // MARK: - Collapsed Readiness Sections
+
+    @Test func loadCollapsedReadinessSectionsDefaultIsNotReadyCollapsed() {
+        #expect(store.loadCollapsedReadinessSections() == ["notReady"])
+    }
+
+    @Test func loadCollapsedReadinessSectionsReturnsSavedValue() {
+        defaults.set(["ready", "notReady"], forKey: SettingsStore.collapsedReadinessSectionsKey)
+        #expect(store.loadCollapsedReadinessSections() == ["ready", "notReady"])
+    }
+
+    @Test func loadCollapsedReadinessSectionsEmptyArrayReturnsEmpty() {
+        defaults.set([String](), forKey: SettingsStore.collapsedReadinessSectionsKey)
+        #expect(store.loadCollapsedReadinessSections().isEmpty)
+    }
+
+    @Test func saveCollapsedReadinessSectionsPersists() {
+        store.saveCollapsedReadinessSections(["ready"])
+        let saved = Set(defaults.stringArray(forKey: SettingsStore.collapsedReadinessSectionsKey) ?? [])
+        #expect(saved == ["ready"])
+    }
+
+    @Test func saveAndLoadCollapsedReadinessSectionsRoundTrip() {
+        store.saveCollapsedReadinessSections(["notReady"])
+        #expect(store.loadCollapsedReadinessSections() == ["notReady"])
     }
 }

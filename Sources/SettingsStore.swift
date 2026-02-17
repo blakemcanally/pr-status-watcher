@@ -12,6 +12,7 @@ final class SettingsStore: SettingsStoreProtocol {
     static let pollingKey = AppConstants.DefaultsKey.pollingInterval
     static let collapsedReposKey = AppConstants.DefaultsKey.collapsedRepos
     static let filterSettingsKey = AppConstants.DefaultsKey.filterSettings
+    static let collapsedReadinessSectionsKey = AppConstants.DefaultsKey.collapsedReadinessSections
 
     init(defaults: UserDefaults) {
         self.defaults = defaults
@@ -60,5 +61,20 @@ final class SettingsStore: SettingsStoreProtocol {
         } catch {
             logger.error("saveFilterSettings: encode failed: \(error.localizedDescription, privacy: .public)")
         }
+    }
+
+    func loadCollapsedReadinessSections() -> Set<String> {
+        guard let array = defaults.stringArray(forKey: Self.collapsedReadinessSectionsKey) else {
+            // First launch: "Not Ready" collapsed by default
+            return ["notReady"]
+        }
+        let result = Set(array)
+        logger.debug("loadCollapsedReadinessSections: \(result.count) sections")
+        return result
+    }
+
+    func saveCollapsedReadinessSections(_ value: Set<String>) {
+        defaults.set(Array(value), forKey: Self.collapsedReadinessSectionsKey)
+        logger.debug("saveCollapsedReadinessSections: \(value.count) sections")
     }
 }

@@ -5,6 +5,7 @@ struct SettingsView: View {
     @EnvironmentObject var manager: PRManager
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
     @State private var loginError: String?
+    @State private var newCheckName = ""
 
     private let intervalOptions: [(label: String, seconds: Int)] = [
         ("30 seconds", 30),
@@ -82,24 +83,82 @@ struct SettingsView: View {
 
                 Divider()
 
-                // Review Filters Section
+                // Review Readiness Section
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Review Filters")
+                    Text(Strings.Readiness.settingsTitle)
                         .font(.headline)
 
-                    Text("Hide PRs on the Reviews tab that aren't ready for your review.")
+                    Text(Strings.Readiness.settingsDescription)
                         .font(.caption)
                         .foregroundColor(.secondary)
 
-                    VStack(alignment: .leading, spacing: 6) {
-                        Toggle("Hide draft PRs", isOn: filterBinding(\.hideDrafts))
-                        Toggle("Hide PRs with failing CI", isOn: filterBinding(\.hideCIFailing))
-                        Toggle("Hide PRs with pending CI", isOn: filterBinding(\.hideCIPending))
-                        Toggle("Hide PRs with merge conflicts", isOn: filterBinding(\.hideConflicting))
-                        Toggle("Hide already-approved PRs", isOn: filterBinding(\.hideApproved))
+                    Toggle("Hide draft PRs", isOn: filterBinding(\.hideDrafts))
+
+                    // Current required checks list
+                    if !manager.filterSettings.requiredCheckNames.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(manager.filterSettings.requiredCheckNames, id: \.self) { name in
+                                HStack {
+                                    Text(name)
+                                        .font(.system(.caption, design: .monospaced))
+                                    Spacer()
+                                    Button {
+                                        manager.filterSettings.requiredCheckNames.removeAll { $0 == name }
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel("Remove \(name)")
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.secondary.opacity(0.08))
+                                .cornerRadius(4)
+                            }
+                        }
                     }
-                    .accessibilityElement(children: .contain)
-                    .accessibilityLabel("Review filter toggles")
+
+                    // Add new check name
+                    HStack(spacing: 6) {
+                        checkNameTextField
+                        Button {
+                            addRequiredCheck()
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.body)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(newCheckName.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .accessibilityLabel("Add check name")
+                    }
+
+                    // Autocomplete suggestions
+                    let suggestions = checkNameSuggestions
+                    if !suggestions.isEmpty && !newCheckName.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 4) {
+                                ForEach(suggestions, id: \.self) { suggestion in
+                                    Button(suggestion) {
+                                        newCheckName = suggestion
+                                        addRequiredCheck()
+                                    }
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.accentColor.opacity(0.1))
+                                    .foregroundColor(.accentColor)
+                                    .cornerRadius(4)
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+
+                    Text(Strings.Readiness.tipText)
+                        .font(.caption2)
+                        .foregroundColor(.secondary.opacity(0.7))
                 }
             }
             .padding(24)
@@ -119,5 +178,31 @@ struct SettingsView: View {
             get: { manager.filterSettings[keyPath: keyPath] },
             set: { manager.filterSettings[keyPath: keyPath] = $0 }
         )
+    }
+
+    // MARK: - Required Checks Helpers
+
+    private var checkNameTextField: some View {
+        TextField(Strings.Readiness.addCheckPlaceholder, text: $newCheckName)
+            .textFieldStyle(.roundedBorder)
+            .font(.system(.caption, design: .monospaced))
+            .onSubmit { addRequiredCheck() }
+    }
+
+    private func addRequiredCheck() {
+        let trimmed = newCheckName.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty,
+              !manager.filterSettings.requiredCheckNames.contains(trimmed) else { return }
+        manager.filterSettings.requiredCheckNames.append(trimmed)
+        newCheckName = ""
+    }
+
+    /// Autocomplete suggestions: check names seen in recent PRs that aren't already required,
+    /// filtered by current text field input.
+    private var checkNameSuggestions: [String] {
+        let existing = Set(manager.filterSettings.requiredCheckNames)
+        let query = newCheckName.lowercased()
+        return manager.availableCheckNames
+            .filter { !existing.contains($0) && $0.lowercased().contains(query) }
     }
 }
