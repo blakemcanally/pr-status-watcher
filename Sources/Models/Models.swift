@@ -27,6 +27,7 @@ struct PullRequest: Identifiable, Codable, Equatable {
     var approvalCount: Int
     var failedChecks: [CheckInfo]
     var checkResults: [CheckResult]
+    var viewerHasApproved: Bool
 
     var repoFullName: String { "\(owner)/\(repo)" }
     var displayNumber: String { "#\(number)" }
@@ -215,15 +216,21 @@ struct PullRequest: Identifiable, Codable, Equatable {
 /// User preferences for the Reviews tab.
 struct FilterSettings: Codable, Equatable {
     var hideDrafts: Bool
+    var hideApprovedByMe: Bool
+    var hideNotReady: Bool
     var requiredCheckNames: [String]
     var ignoredCheckNames: [String]
 
     init(
         hideDrafts: Bool = true,
+        hideApprovedByMe: Bool = false,
+        hideNotReady: Bool = false,
         requiredCheckNames: [String] = [],
         ignoredCheckNames: [String] = []
     ) {
         self.hideDrafts = hideDrafts
+        self.hideApprovedByMe = hideApprovedByMe
+        self.hideNotReady = hideNotReady
         self.requiredCheckNames = requiredCheckNames
         self.ignoredCheckNames = ignoredCheckNames
     }
@@ -233,14 +240,20 @@ struct FilterSettings: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         hideDrafts = try container.decodeIfPresent(Bool.self, forKey: .hideDrafts) ?? true
+        hideApprovedByMe = try container.decodeIfPresent(Bool.self, forKey: .hideApprovedByMe) ?? false
+        hideNotReady = try container.decodeIfPresent(Bool.self, forKey: .hideNotReady) ?? false
         requiredCheckNames = try container.decodeIfPresent([String].self, forKey: .requiredCheckNames) ?? []
         ignoredCheckNames = try container.decodeIfPresent([String].self, forKey: .ignoredCheckNames) ?? []
     }
 
-    /// Filter a list of PRs for the Reviews tab, removing draft PRs when configured.
+    /// Filter a list of PRs for the Reviews tab, removing draft, approved, and/or not-ready PRs when configured.
     func applyReviewFilters(to prs: [PullRequest]) -> [PullRequest] {
         prs.filter { pr in
             if hideDrafts && pr.state == .draft { return false }
+            if hideApprovedByMe && pr.viewerHasApproved { return false }
+            if hideNotReady && !pr.isReady(requiredChecks: requiredCheckNames, ignoredChecks: ignoredCheckNames) {
+                return false
+            }
             return true
         }
     }

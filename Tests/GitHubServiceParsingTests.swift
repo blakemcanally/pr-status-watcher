@@ -307,7 +307,7 @@ import Foundation
             mergeable: "MERGEABLE",
             approvalCount: 1
         )
-        let pr = service.convertNode(node)
+        let pr = service.convertNode(node, viewerUsername: "testuser")
         #expect(pr != nil)
         #expect(pr?.number == 42)
         #expect(pr?.title == "Test PR")
@@ -321,53 +321,140 @@ import Foundation
 
     @Test func convertNodeMissingNumber() {
         let node = PRNode.fixture(number: nil, title: "No Number")
-        #expect(service.convertNode(node) == nil)
+        #expect(service.convertNode(node, viewerUsername: "testuser") == nil)
     }
 
     @Test func convertNodeMissingTitle() {
         let node = PRNode.fixture(title: nil)
-        #expect(service.convertNode(node) == nil)
+        #expect(service.convertNode(node, viewerUsername: "testuser") == nil)
     }
 
     @Test func convertNodeMissingURL() {
         let node = PRNode.fixture(url: nil)
-        #expect(service.convertNode(node) == nil)
+        #expect(service.convertNode(node, viewerUsername: "testuser") == nil)
     }
 
     @Test func convertNodeEmptyURL() {
         let node = PRNode.fixture(url: "")
-        #expect(service.convertNode(node) == nil)
+        #expect(service.convertNode(node, viewerUsername: "testuser") == nil)
     }
 
     @Test func convertNodeMissingRepository() {
         let node = PRNode.fixture(nameWithOwner: nil)
-        #expect(service.convertNode(node) == nil)
+        #expect(service.convertNode(node, viewerUsername: "testuser") == nil)
     }
 
     @Test func convertNodeSingleSegmentRepo() {
         let node = PRNode.fixture(nameWithOwner: "noslash")
-        #expect(service.convertNode(node) == nil)
+        #expect(service.convertNode(node, viewerUsername: "testuser") == nil)
     }
 
     @Test func convertNodeThreeSegmentRepo() {
         let node = PRNode.fixture(nameWithOwner: "too/many/segments")
-        #expect(service.convertNode(node) == nil)
+        #expect(service.convertNode(node, viewerUsername: "testuser") == nil)
     }
 
     @Test func convertNodeDraft() {
         let node = PRNode.fixture(isDraft: true, state: "OPEN")
-        let pr = service.convertNode(node)
+        let pr = service.convertNode(node, viewerUsername: "testuser")
         #expect(pr?.state == .draft)
     }
 
     @Test func convertNodeDefaultsForOptionalFields() {
         // Minimal valid node — only required fields
         let node = PRNode.fixture()
-        let pr = service.convertNode(node)
+        let pr = service.convertNode(node, viewerUsername: "testuser")
         #expect(pr != nil)
         #expect(pr?.author == "unknown")
         #expect(pr?.state == .open)
         #expect(pr?.headRefName == "")
+    }
+
+    // MARK: - convertNode: viewerHasApproved via latestReviews
+
+    @Test func convertNodeSetsViewerHasApprovedWhenViewerApproved() {
+        let node = PRNode.fixture(
+            latestReviews: PRNode.LatestReviewsConnection(nodes: [
+                PRNode.LatestReviewNode(author: PRNode.AuthorRef(login: "viewer"), state: "APPROVED"),
+                PRNode.LatestReviewNode(author: PRNode.AuthorRef(login: "other"), state: "CHANGES_REQUESTED"),
+            ])
+        )
+        let pr = service.convertNode(node, viewerUsername: "viewer")
+        #expect(pr?.viewerHasApproved == true)
+    }
+
+    @Test func convertNodeSetsViewerHasApprovedFalseWhenViewerRequestedChanges() {
+        let node = PRNode.fixture(
+            latestReviews: PRNode.LatestReviewsConnection(nodes: [
+                PRNode.LatestReviewNode(author: PRNode.AuthorRef(login: "viewer"), state: "CHANGES_REQUESTED"),
+            ])
+        )
+        let pr = service.convertNode(node, viewerUsername: "viewer")
+        #expect(pr?.viewerHasApproved == false)
+    }
+
+    @Test func convertNodeSetsViewerHasApprovedFalseWhenViewerNotInReviews() {
+        let node = PRNode.fixture(
+            latestReviews: PRNode.LatestReviewsConnection(nodes: [
+                PRNode.LatestReviewNode(author: PRNode.AuthorRef(login: "other"), state: "APPROVED"),
+            ])
+        )
+        let pr = service.convertNode(node, viewerUsername: "viewer")
+        #expect(pr?.viewerHasApproved == false)
+    }
+
+    @Test func convertNodeSetsViewerHasApprovedFalseWhenNoLatestReviews() {
+        let node = PRNode.fixture(latestReviews: nil)
+        let pr = service.convertNode(node, viewerUsername: "viewer")
+        #expect(pr?.viewerHasApproved == false)
+    }
+
+    @Test func convertNodeViewerMatchIsCaseInsensitive() {
+        let node = PRNode.fixture(
+            latestReviews: PRNode.LatestReviewsConnection(nodes: [
+                PRNode.LatestReviewNode(author: PRNode.AuthorRef(login: "Viewer"), state: "APPROVED"),
+            ])
+        )
+        let pr = service.convertNode(node, viewerUsername: "viewer")
+        #expect(pr?.viewerHasApproved == true)
+    }
+
+    @Test func convertNodeCommentedReviewIsNotApproved() {
+        let node = PRNode.fixture(
+            latestReviews: PRNode.LatestReviewsConnection(nodes: [
+                PRNode.LatestReviewNode(author: PRNode.AuthorRef(login: "viewer"), state: "COMMENTED"),
+            ])
+        )
+        let pr = service.convertNode(node, viewerUsername: "viewer")
+        #expect(pr?.viewerHasApproved == false)
+    }
+
+    @Test func convertNodeNilAuthorInLatestReviewIsNotApproved() {
+        let node = PRNode.fixture(
+            latestReviews: PRNode.LatestReviewsConnection(nodes: [
+                PRNode.LatestReviewNode(author: nil, state: "APPROVED"),
+            ])
+        )
+        let pr = service.convertNode(node, viewerUsername: "viewer")
+        #expect(pr?.viewerHasApproved == false)
+    }
+
+    @Test func convertNodeNilStateInLatestReviewIsNotApproved() {
+        let node = PRNode.fixture(
+            latestReviews: PRNode.LatestReviewsConnection(nodes: [
+                PRNode.LatestReviewNode(author: PRNode.AuthorRef(login: "viewer"), state: nil),
+            ])
+        )
+        let pr = service.convertNode(node, viewerUsername: "viewer")
+        #expect(pr?.viewerHasApproved == false)
+    }
+
+    @Test func convertNodeEmptyLatestReviewsNodesIsNotApproved() {
+        let node = PRNode.fixture(
+            latestReviews: PRNode.LatestReviewsConnection(nodes: [])
+        )
+        let pr = service.convertNode(node, viewerUsername: "viewer")
+        #expect(pr?.viewerHasApproved == false)
     }
 
     // MARK: - GraphQLResponse Decoding
@@ -451,7 +538,8 @@ extension PRNode {
         approvalCount: Int? = nil,
         headRefOid: String? = nil,
         headRefName: String? = nil,
-        commits: PRNode.CommitConnection? = nil
+        commits: PRNode.CommitConnection? = nil,
+        latestReviews: PRNode.LatestReviewsConnection? = nil
     ) -> PRNode {
         PRNode(
             number: number,
@@ -465,6 +553,7 @@ extension PRNode {
             mergeable: mergeable,
             mergeQueueEntry: mergeQueuePosition.map { PRNode.MergeQueueEntryRef(position: $0) } ?? nil,
             reviews: approvalCount.map { PRNode.ReviewsRef(totalCount: $0) },
+            latestReviews: latestReviews,
             headRefOid: headRefOid,
             headRefName: headRefName,
             commits: commits

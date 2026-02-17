@@ -75,12 +75,12 @@ final class GitHubService: GitHubServiceProtocol, Sendable {
 
     /// Fetch all open PRs authored by the given user.
     func fetchAllMyOpenPRs(username: String) throws -> [PullRequest] {
-        try fetchPRs(searchQuery: "author:\(username) type:pr state:open")
+        try fetchPRs(searchQuery: "author:\(username) type:pr state:open", viewerUsername: username)
     }
 
     /// Fetch open PRs where the given user has a pending review request.
     func fetchReviewRequestedPRs(username: String) throws -> [PullRequest] {
-        try fetchPRs(searchQuery: "review-requested:\(username) type:pr state:open")
+        try fetchPRs(searchQuery: "review-requested:\(username) type:pr state:open", viewerUsername: username)
     }
 
     // MARK: - Shared Fetch
@@ -96,7 +96,7 @@ final class GitHubService: GitHubServiceProtocol, Sendable {
     private static let maxPages = 10
 
     /// Fetch PRs matching an arbitrary GitHub search query string, with cursor-based pagination.
-    private func fetchPRs(searchQuery: String) throws -> [PullRequest] {
+    private func fetchPRs(searchQuery: String, viewerUsername: String) throws -> [PullRequest] {
         let escapedQuery = escapeForGraphQL(searchQuery)
         var allPRs: [PullRequest] = []
         var cursor: String?
@@ -112,7 +112,8 @@ final class GitHubService: GitHubServiceProtocol, Sendable {
             let page = try fetchPRPage(
                 escapedQuery: escapedQuery,
                 cursor: cursor,
-                searchQuery: searchQuery
+                searchQuery: searchQuery,
+                viewerUsername: viewerUsername
             )
             allPRs.append(contentsOf: page.prs)
 
@@ -136,7 +137,8 @@ final class GitHubService: GitHubServiceProtocol, Sendable {
     private func fetchPRPage(
         escapedQuery: String,
         cursor: String?,
-        searchQuery: String
+        searchQuery: String,
+        viewerUsername: String
     ) throws -> PRPageResult {
         let pageSize = 100
         let afterClause = cursor.map { #", after: \"\#($0)\""# } ?? ""
@@ -182,7 +184,7 @@ final class GitHubService: GitHubServiceProtocol, Sendable {
 
         var skippedCount = 0
         let prs = searchResult.nodes.compactMap { node -> PullRequest? in
-            guard let parsed = convertNode(node) else {
+            guard let parsed = convertNode(node, viewerUsername: viewerUsername) else {
                 skippedCount += 1
                 let nodeNum = node.number.map(String.init) ?? "nil"
                 let nodeTitle = node.title?.prefix(50).description ?? "nil"
@@ -226,6 +228,12 @@ final class GitHubService: GitHubServiceProtocol, Sendable {
                 mergeable
                 mergeQueueEntry { position }
                 reviews(states: APPROVED, first: 0) { totalCount }
+                latestReviews(first: 20) {
+                  nodes {
+                    author { login }
+                    state
+                  }
+                }
                 headRefOid
                 headRefName
                 commits(last: 1) {

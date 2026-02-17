@@ -391,15 +391,17 @@ struct ContentView: View {
     }
 
     private var filteredEmptyState: some View {
-        VStack(spacing: 10) {
+        let (icon, title, subtitle) = filteredEmptyMessage
+
+        return VStack(spacing: 10) {
             Spacer()
-            Image(systemName: "line.3.horizontal.decrease.circle")
+            Image(systemName: icon)
                 .font(.system(size: 32))
                 .foregroundColor(.secondary)
-            Text(Strings.EmptyState.filteredTitle)
+            Text(title)
                 .font(.title3)
                 .foregroundColor(.secondary)
-            Text(Strings.EmptyState.filteredSubtitle)
+            Text(subtitle)
                 .font(.caption)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -408,6 +410,42 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity)
         .accessibilityLabel("All review requests hidden by filters")
+    }
+
+    /// Determine the appropriate empty state message based on active filters.
+    private var filteredEmptyMessage: (icon: String, title: String, subtitle: String) {
+        let settings = manager.filterSettings
+        let allDrafts = activePRs.allSatisfy { $0.state == .draft }
+        let allApproved = activePRs.allSatisfy { $0.viewerHasApproved }
+        let allNotReady = activePRs.allSatisfy {
+            !$0.isReady(requiredChecks: settings.requiredCheckNames, ignoredChecks: settings.ignoredCheckNames)
+        }
+
+        if settings.hideApprovedByMe && allApproved {
+            return (
+                "checkmark.circle",
+                Strings.EmptyState.filteredApprovedTitle,
+                Strings.EmptyState.filteredApprovedSubtitle
+            )
+        } else if settings.hideDrafts && allDrafts {
+            return (
+                "line.3.horizontal.decrease.circle",
+                Strings.EmptyState.filteredDraftsTitle,
+                Strings.EmptyState.filteredDraftsSubtitle
+            )
+        } else if settings.hideNotReady && allNotReady {
+            return (
+                "checkmark.circle",
+                Strings.EmptyState.filteredNotReadyTitle,
+                Strings.EmptyState.filteredNotReadySubtitle
+            )
+        } else {
+            return (
+                "line.3.horizontal.decrease.circle",
+                Strings.EmptyState.filteredMixedTitle,
+                Strings.EmptyState.filteredMixedSubtitle
+            )
+        }
     }
 
     // MARK: - Footer

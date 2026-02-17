@@ -90,6 +90,8 @@ struct SettingsView: View {
                         .font(.headline)
 
                     Toggle("Hide draft PRs", isOn: filterBinding(\.hideDrafts))
+                    Toggle("Hide PRs I've approved", isOn: filterBinding(\.hideApprovedByMe))
+                    Toggle("Hide \"Not Ready\" PRs", isOn: filterBinding(\.hideNotReady))
                 }
 
                 Divider()

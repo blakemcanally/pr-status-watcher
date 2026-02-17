@@ -63,6 +63,7 @@ struct PRRowView: View {
                             (displayCIStatus == .success || displayCIStatus == .unknown) {
                             reviewBadge
                         }
+                        approvalCountBadge
                         Spacer()
                         if !pullRequest.headSHA.isEmpty {
                             Text(pullRequest.headSHA)
@@ -114,7 +115,10 @@ struct PRRowView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(pullRequest.title), \(pullRequest.displayNumber) by \(pullRequest.author), \(stateText)")
+        .accessibilityLabel(
+            "\(pullRequest.title), \(pullRequest.displayNumber) by \(pullRequest.author), \(stateText)"
+            + (pullRequest.approvalCount > 0 ? ", \(pullRequest.approvalCount) approvals" : "")
+        )
         .accessibilityHint("Opens in browser")
     }
 
@@ -169,6 +173,19 @@ struct PRRowView: View {
             badgePill(icon: "eye.fill", text: Strings.Review.reviewRequired, color: .orange)
         case .none:
             EmptyView()
+        }
+    }
+
+    // MARK: - Approval Count Badge
+
+    @ViewBuilder
+    private var approvalCountBadge: some View {
+        if pullRequest.approvalCount > 0 {
+            badgePill(
+                icon: "person.fill.checkmark",
+                text: "\(pullRequest.approvalCount)",
+                color: .green
+            )
         }
     }
 

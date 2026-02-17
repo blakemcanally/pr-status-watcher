@@ -425,6 +425,61 @@ import Foundation
         #expect(manager.statusBarSummary == "0 | 1")
     }
 
+    @Test func statusBarSummaryFiltersApprovedByMeFromReviews() async {
+        mockService.myPRsResult = .success([])
+        mockService.reviewPRsResult = .success([
+            PullRequest.fixture(number: 1, state: .open, viewerHasApproved: true),
+            PullRequest.fixture(number: 2, state: .open, viewerHasApproved: false),
+            PullRequest.fixture(number: 3, state: .open, viewerHasApproved: true),
+        ])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        manager.filterSettings.hideDrafts = false
+        manager.filterSettings.hideApprovedByMe = true
+        await manager.refreshAll()
+
+        #expect(manager.statusBarSummary == "0 | 1")
+    }
+
+    @Test func statusBarSummaryFiltersNotReadyFromReviews() async {
+        mockService.myPRsResult = .success([])
+        mockService.reviewPRsResult = .success([
+            PullRequest.fixture(number: 1, state: .open, ciStatus: .success),
+            PullRequest.fixture(number: 2, state: .open, ciStatus: .failure),
+            PullRequest.fixture(number: 3, state: .open, ciStatus: .pending),
+        ])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        manager.filterSettings.hideDrafts = false
+        manager.filterSettings.hideNotReady = true
+        await manager.refreshAll()
+
+        // Only the CI-success PR is ready
+        #expect(manager.statusBarSummary == "0 | 1")
+    }
+
+    @Test func statusBarSummaryAllFiltersAppliedTogether() async {
+        mockService.myPRsResult = .success([PullRequest.fixture(number: 10)])
+        mockService.reviewPRsResult = .success([
+            PullRequest.fixture(number: 1, state: .draft),
+            PullRequest.fixture(number: 2, state: .open, ciStatus: .success, viewerHasApproved: true),
+            PullRequest.fixture(number: 3, state: .open, ciStatus: .failure),
+            PullRequest.fixture(number: 4, state: .open, ciStatus: .success, viewerHasApproved: false),
+        ])
+
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        manager.filterSettings.hideDrafts = true
+        manager.filterSettings.hideApprovedByMe = true
+        manager.filterSettings.hideNotReady = true
+        await manager.refreshAll()
+
+        // Only PR #4 survives: open, CI success, not approved
+        #expect(manager.statusBarSummary == "1 | 1")
+    }
+
     // MARK: - Error Type Propagation
 
     @Test func graphQLApiErrorSurfaced() async {

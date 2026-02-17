@@ -132,8 +132,16 @@ enum Strings {
         static let noPRsSubtitle = "Your open, draft, and queued PRs will appear here automatically"
         static let noReviewsTitle = "No review requests"
         static let noReviewsSubtitle = "Pull requests where your review is requested will appear here"
-        static let filteredTitle = "All review requests are drafts"
-        static let filteredSubtitle = "Disable \"Hide draft PRs\" in Settings to see them"
+
+        // Filtered empty states — shown when filters hide all PRs
+        static let filteredDraftsTitle = "All review requests are drafts"
+        static let filteredDraftsSubtitle = "Disable \"Hide draft PRs\" in Settings to see them"
+        static let filteredApprovedTitle = "All caught up"
+        static let filteredApprovedSubtitle = "You've approved all pending review requests"
+        static let filteredNotReadyTitle = "All caught up"
+        static let filteredNotReadySubtitle = "No review requests need your attention right now"
+        static let filteredMixedTitle = "All review requests hidden"
+        static let filteredMixedSubtitle = "Adjust your filters in Settings to see them"
     }
 
     // MARK: Readiness

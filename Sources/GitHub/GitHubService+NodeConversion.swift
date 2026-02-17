@@ -4,7 +4,7 @@ import Foundation
 
 extension GitHubService {
 
-    func convertNode(_ node: PRNode) -> PullRequest? {
+    func convertNode(_ node: PRNode, viewerUsername: String) -> PullRequest? {
         guard let number = node.number,
               let title = node.title,
               let urlString = node.url,
@@ -30,6 +30,14 @@ extension GitHubService {
         let state = parsePRState(rawState: rawState, isDraft: isDraft)
         let checkResult = parseCheckStatus(from: node)
 
+        let viewerHasApproved: Bool = {
+            guard let latestReviews = node.latestReviews?.nodes else { return false }
+            return latestReviews.contains { review in
+                guard let login = review.author?.login, let state = review.state else { return false }
+                return login.caseInsensitiveCompare(viewerUsername) == .orderedSame && state == "APPROVED"
+            }
+        }()
+
         return PullRequest(
             owner: owner,
             repo: repo,
@@ -51,7 +59,8 @@ extension GitHubService {
             queuePosition: queuePosition,
             approvalCount: approvalCount,
             failedChecks: checkResult.failedChecks,
-            checkResults: checkResult.checkResults
+            checkResults: checkResult.checkResults,
+            viewerHasApproved: viewerHasApproved
         )
     }
 

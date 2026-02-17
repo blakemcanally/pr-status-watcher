@@ -28,7 +28,8 @@ extension PullRequest {
         queuePosition: Int? = nil,
         approvalCount: Int = 0,
         failedChecks: [CheckInfo] = [],
-        checkResults: [CheckResult] = []
+        checkResults: [CheckResult] = [],
+        viewerHasApproved: Bool = false
     ) -> PullRequest {
         PullRequest(
             owner: owner,
@@ -51,7 +52,8 @@ extension PullRequest {
             queuePosition: queuePosition,
             approvalCount: approvalCount,
             failedChecks: failedChecks,
-            checkResults: checkResults
+            checkResults: checkResults,
+            viewerHasApproved: viewerHasApproved
         )
     }
 }
@@ -69,6 +71,14 @@ extension PullRequest {
 
     @Test func defaultIgnoredCheckNamesIsEmpty() {
         #expect(FilterSettings().ignoredCheckNames.isEmpty)
+    }
+
+    @Test func defaultHideApprovedByMeIsFalse() {
+        #expect(!FilterSettings().hideApprovedByMe)
+    }
+
+    @Test func defaultHideNotReadyIsFalse() {
+        #expect(!FilterSettings().hideNotReady)
     }
 }
 
@@ -139,6 +149,32 @@ extension PullRequest {
         #expect(decoded.requiredCheckNames == ["build"])
         #expect(decoded.ignoredCheckNames == ["flaky-lint"])
     }
+
+    @Test func codableRoundTripWithHideApprovedByMe() throws {
+        let original = FilterSettings(hideApprovedByMe: true)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
+        #expect(decoded.hideApprovedByMe)
+    }
+
+    @Test func decodingWithoutHideApprovedByMeDefaultsToFalse() throws {
+        let json = #"{"hideDrafts": true}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: json)
+        #expect(!decoded.hideApprovedByMe)
+    }
+
+    @Test func codableRoundTripWithHideNotReady() throws {
+        let original = FilterSettings(hideNotReady: true)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
+        #expect(decoded.hideNotReady)
+    }
+
+    @Test func decodingWithoutHideNotReadyDefaultsToFalse() throws {
+        let json = #"{"hideDrafts": true}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: json)
+        #expect(!decoded.hideNotReady)
+    }
 }
 
 // MARK: - Filter Predicate: hideDrafts
@@ -164,6 +200,151 @@ extension PullRequest {
     @Test func hideDraftsDoesNotAffectOpenPRs() {
         let prs = [PullRequest.fixture(state: .open)]
         let result = FilterSettings().applyReviewFilters(to: prs)
+        #expect(result.count == 1)
+    }
+
+    @Test func hideApprovedByMeFiltersApprovedPRs() {
+        let settings = FilterSettings(hideDrafts: false, hideApprovedByMe: true)
+        let prs = [
+            PullRequest.fixture(number: 1, viewerHasApproved: true),
+            PullRequest.fixture(number: 2, viewerHasApproved: false),
+            PullRequest.fixture(number: 3, viewerHasApproved: true),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 2)
+    }
+
+    @Test func hideApprovedByMeDisabledShowsAllPRs() {
+        let settings = FilterSettings(hideDrafts: false, hideApprovedByMe: false)
+        let prs = [
+            PullRequest.fixture(number: 1, viewerHasApproved: true),
+            PullRequest.fixture(number: 2, viewerHasApproved: false),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.count == 2)
+    }
+
+    @Test func hideApprovedByMeDoesNotAffectNonApprovedPRs() {
+        let settings = FilterSettings(hideApprovedByMe: true)
+        let prs = [PullRequest.fixture(viewerHasApproved: false)]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.count == 1)
+    }
+
+    @Test func hideNotReadyFiltersNotReadyPRs() {
+        let settings = FilterSettings(hideDrafts: false, hideNotReady: true)
+        let prs = [
+            PullRequest.fixture(number: 1, state: .open, ciStatus: .success),
+            PullRequest.fixture(number: 2, state: .open, ciStatus: .failure),
+            PullRequest.fixture(number: 3, state: .open, ciStatus: .pending),
+            PullRequest.fixture(number: 4, state: .draft),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 1)
+    }
+
+    @Test func hideNotReadyDisabledShowsAllPRs() {
+        let settings = FilterSettings(hideDrafts: false, hideNotReady: false)
+        let prs = [
+            PullRequest.fixture(number: 1, state: .open, ciStatus: .failure),
+            PullRequest.fixture(number: 2, state: .open, ciStatus: .success),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.count == 2)
+    }
+
+    @Test func hideNotReadyKeepsReadyPRs() {
+        let settings = FilterSettings(hideDrafts: false, hideNotReady: true)
+        let prs = [
+            PullRequest.fixture(number: 1, state: .open, ciStatus: .success, mergeable: .mergeable),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.count == 1)
+    }
+
+    @Test func hideNotReadyFiltersConflictingPRs() {
+        let settings = FilterSettings(hideDrafts: false, hideNotReady: true)
+        let prs = [
+            PullRequest.fixture(number: 1, state: .open, ciStatus: .success, mergeable: .conflicting),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.isEmpty)
+    }
+
+    @Test func hideNotReadyRespectsRequiredCheckNames() {
+        let settings = FilterSettings(
+            hideDrafts: false,
+            hideNotReady: true,
+            requiredCheckNames: ["build"]
+        )
+        let prs = [
+            // CI overall success, but required check "build" is failing → not ready
+            PullRequest.fixture(
+                number: 1,
+                state: .open,
+                ciStatus: .success,
+                checkResults: [
+                    PullRequest.CheckResult(name: "build", status: .failed, detailsUrl: nil),
+                    PullRequest.CheckResult(name: "lint", status: .passed, detailsUrl: nil),
+                ]
+            ),
+            // Required check "build" is passing → ready
+            PullRequest.fixture(
+                number: 2,
+                state: .open,
+                ciStatus: .success,
+                checkResults: [
+                    PullRequest.CheckResult(name: "build", status: .passed, detailsUrl: nil),
+                    PullRequest.CheckResult(name: "lint", status: .passed, detailsUrl: nil),
+                ]
+            ),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 2)
+    }
+
+    @Test func hideNotReadyRespectsIgnoredCheckNames() {
+        let settings = FilterSettings(
+            hideDrafts: false,
+            hideNotReady: true,
+            ignoredCheckNames: ["flaky-check"]
+        )
+        let prs = [
+            // CI failing overall, but only the ignored check fails → effective status is success → ready
+            PullRequest.fixture(
+                number: 1,
+                state: .open,
+                ciStatus: .failure,
+                checkResults: [
+                    PullRequest.CheckResult(name: "build", status: .passed, detailsUrl: nil),
+                    PullRequest.CheckResult(name: "flaky-check", status: .failed, detailsUrl: nil),
+                ]
+            ),
+            // Non-ignored check failing → not ready
+            PullRequest.fixture(
+                number: 2,
+                state: .open,
+                ciStatus: .failure,
+                checkResults: [
+                    PullRequest.CheckResult(name: "build", status: .failed, detailsUrl: nil),
+                    PullRequest.CheckResult(name: "flaky-check", status: .failed, detailsUrl: nil),
+                ]
+            ),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 1)
+    }
+
+    @Test func hideNotReadyWithUnknownCIStatusIsReady() {
+        let settings = FilterSettings(hideDrafts: false, hideNotReady: true)
+        let prs = [
+            PullRequest.fixture(number: 1, state: .open, ciStatus: .unknown, checksTotal: 0, checksPassed: 0, checkResults: []),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
         #expect(result.count == 1)
     }
 }
@@ -207,6 +388,52 @@ extension PullRequest {
         let prs = [
             PullRequest.fixture(number: 1, state: .draft),
             PullRequest.fixture(number: 2, state: .draft),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.isEmpty)
+    }
+
+    @Test func hideDraftsAndHideApprovedCombined() {
+        let settings = FilterSettings(hideDrafts: true, hideApprovedByMe: true)
+        let prs = [
+            PullRequest.fixture(number: 1, state: .draft, viewerHasApproved: false),
+            PullRequest.fixture(number: 2, state: .open, viewerHasApproved: true),
+            PullRequest.fixture(number: 3, state: .open, viewerHasApproved: false),
+            PullRequest.fixture(number: 4, state: .draft, viewerHasApproved: true),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 3)
+    }
+
+    @Test func allPRsApprovedAndHiddenReturnsEmpty() {
+        let settings = FilterSettings(hideDrafts: false, hideApprovedByMe: true)
+        let prs = [
+            PullRequest.fixture(number: 1, viewerHasApproved: true),
+            PullRequest.fixture(number: 2, viewerHasApproved: true),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.isEmpty)
+    }
+
+    @Test func hideNotReadyAndHideApprovedCombined() {
+        let settings = FilterSettings(hideDrafts: false, hideApprovedByMe: true, hideNotReady: true)
+        let prs = [
+            PullRequest.fixture(number: 1, state: .open, ciStatus: .success, viewerHasApproved: true),
+            PullRequest.fixture(number: 2, state: .open, ciStatus: .failure, viewerHasApproved: false),
+            PullRequest.fixture(number: 3, state: .open, ciStatus: .success, viewerHasApproved: false),
+        ]
+        let result = settings.applyReviewFilters(to: prs)
+        #expect(result.count == 1)
+        #expect(result.first?.number == 3)
+    }
+
+    @Test func allThreeFiltersHideEverything() {
+        let settings = FilterSettings(hideDrafts: true, hideApprovedByMe: true, hideNotReady: true)
+        let prs = [
+            PullRequest.fixture(number: 1, state: .draft),
+            PullRequest.fixture(number: 2, state: .open, ciStatus: .success, viewerHasApproved: true),
+            PullRequest.fixture(number: 3, state: .open, ciStatus: .failure),
         ]
         let result = settings.applyReviewFilters(to: prs)
         #expect(result.isEmpty)
@@ -257,6 +484,26 @@ extension PullRequest {
         let loaded = try #require(UserDefaults.standard.data(forKey: testKey))
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: loaded)
         #expect(decoded.ignoredCheckNames == ["flaky-check"])
+    }
+
+    @Test func persistAndReloadHideNotReadyViaUserDefaults() throws {
+        let original = FilterSettings(hideNotReady: true)
+        let data = try JSONEncoder().encode(original)
+        UserDefaults.standard.set(data, forKey: testKey)
+
+        let loaded = try #require(UserDefaults.standard.data(forKey: testKey))
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: loaded)
+        #expect(decoded.hideNotReady)
+    }
+
+    @Test func persistAndReloadHideApprovedByMeViaUserDefaults() throws {
+        let original = FilterSettings(hideApprovedByMe: true)
+        let data = try JSONEncoder().encode(original)
+        UserDefaults.standard.set(data, forKey: testKey)
+
+        let loaded = try #require(UserDefaults.standard.data(forKey: testKey))
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: loaded)
+        #expect(decoded.hideApprovedByMe)
     }
 
     @Test func missingKeyReturnsNilData() {

@@ -43,6 +43,7 @@ struct PRNode: Codable {
     let mergeable: String?
     let mergeQueueEntry: MergeQueueEntryRef?
     let reviews: ReviewsRef?
+    let latestReviews: LatestReviewsConnection?
     let headRefOid: String?
     let headRefName: String?
     let commits: CommitConnection?
@@ -61,6 +62,15 @@ struct PRNode: Codable {
 
     struct ReviewsRef: Codable {
         let totalCount: Int
+    }
+
+    struct LatestReviewNode: Codable {
+        let author: AuthorRef?
+        let state: String?
+    }
+
+    struct LatestReviewsConnection: Codable {
+        let nodes: [LatestReviewNode]
     }
 
     struct CommitConnection: Codable {
