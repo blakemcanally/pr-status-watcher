@@ -204,4 +204,207 @@ import SwiftUI
         )
         #expect(!pr.isReady(requiredChecks: ["build"]))
     }
+
+    // Ignored checks mode (default — no required checks)
+
+    @Test func ignoredFailingCheckMakesPRReadyInDefaultMode() {
+        let pr = PullRequest.fixture(
+            state: .open, ciStatus: .failure,
+            checkResults: [
+                .init(name: "build", status: .passed, detailsUrl: nil),
+                .init(name: "flaky", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(!pr.isReady(requiredChecks: []))
+        #expect(pr.isReady(requiredChecks: [], ignoredChecks: ["flaky"]))
+    }
+
+    @Test func ignoredPendingCheckMakesPRReadyInDefaultMode() {
+        let pr = PullRequest.fixture(
+            state: .open, ciStatus: .pending,
+            checkResults: [
+                .init(name: "build", status: .passed, detailsUrl: nil),
+                .init(name: "slow-check", status: .pending, detailsUrl: nil),
+            ]
+        )
+        #expect(!pr.isReady(requiredChecks: []))
+        #expect(pr.isReady(requiredChecks: [], ignoredChecks: ["slow-check"]))
+    }
+
+    @Test func ignoringAllChecksReturnsReadyInDefaultMode() {
+        let pr = PullRequest.fixture(
+            state: .open, ciStatus: .failure,
+            checkResults: [
+                .init(name: "only-check", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(pr.isReady(requiredChecks: [], ignoredChecks: ["only-check"]))
+    }
+
+    @Test func ignoredChecksDontOverrideDraftStatus() {
+        let pr = PullRequest.fixture(
+            state: .draft, ciStatus: .failure,
+            checkResults: [
+                .init(name: "flaky", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(!pr.isReady(requiredChecks: [], ignoredChecks: ["flaky"]))
+    }
+
+    @Test func ignoredChecksDontOverrideConflicts() {
+        let pr = PullRequest.fixture(
+            state: .open, ciStatus: .failure, mergeable: .conflicting,
+            checkResults: [
+                .init(name: "flaky", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(!pr.isReady(requiredChecks: [], ignoredChecks: ["flaky"]))
+    }
+
+    // Ignored checks + required checks mode
+
+    @Test func ignoredCheckWithRequiredChecksMode() {
+        let pr = PullRequest.fixture(
+            state: .open, ciStatus: .failure,
+            checkResults: [
+                .init(name: "build", status: .passed, detailsUrl: nil),
+                .init(name: "flaky", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(pr.isReady(requiredChecks: ["build"], ignoredChecks: ["flaky"]))
+    }
+
+    @Test func ignoredCheckInBothListsDefensivelyIgnored() {
+        let pr = PullRequest.fixture(
+            state: .open,
+            checkResults: [
+                .init(name: "build", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(pr.isReady(requiredChecks: ["build"], ignoredChecks: ["build"]))
+    }
+
+    @Test func emptyIgnoredChecksDoesNotAffectReadiness() {
+        let pr = PullRequest.fixture(state: .open, ciStatus: .failure)
+        #expect(!pr.isReady(requiredChecks: [], ignoredChecks: []))
+    }
+}
+
+// MARK: - Effective Values Tests (Ignored Checks)
+
+@Suite struct EffectiveValuesTests {
+    private let checksFixture: [PullRequest.CheckResult] = [
+        .init(name: "build", status: .passed, detailsUrl: nil),
+        .init(name: "lint", status: .failed, detailsUrl: nil),
+        .init(name: "graphite/stack", status: .failed, detailsUrl: nil),
+        .init(name: "test", status: .pending, detailsUrl: nil),
+    ]
+
+    private let failedFixture: [PullRequest.CheckInfo] = [
+        .init(name: "lint", detailsUrl: nil),
+        .init(name: "graphite/stack", detailsUrl: nil),
+    ]
+
+    // effectiveCheckResults
+
+    @Test func effectiveCheckResultsWithEmptyIgnoreListReturnsAll() {
+        let pr = PullRequest.fixture(checkResults: checksFixture)
+        #expect(pr.effectiveCheckResults(ignoredChecks: []).count == 4)
+    }
+
+    @Test func effectiveCheckResultsFiltersIgnoredChecks() {
+        let pr = PullRequest.fixture(checkResults: checksFixture)
+        let effective = pr.effectiveCheckResults(ignoredChecks: ["graphite/stack"])
+        #expect(effective.count == 3)
+        #expect(!effective.contains(where: { $0.name == "graphite/stack" }))
+    }
+
+    @Test func effectiveCheckResultsFiltersMultipleIgnoredChecks() {
+        let pr = PullRequest.fixture(checkResults: checksFixture)
+        let effective = pr.effectiveCheckResults(ignoredChecks: ["lint", "graphite/stack"])
+        #expect(effective.count == 2)
+        #expect(effective.map(\.name).sorted() == ["build", "test"])
+    }
+
+    // effectiveFailedChecks
+
+    @Test func effectiveFailedChecksFiltersIgnoredChecks() {
+        let pr = PullRequest.fixture(failedChecks: failedFixture)
+        let effective = pr.effectiveFailedChecks(ignoredChecks: ["graphite/stack"])
+        #expect(effective.count == 1)
+        #expect(effective.first?.name == "lint")
+    }
+
+    @Test func effectiveFailedChecksWithEmptyIgnoreListReturnsAll() {
+        let pr = PullRequest.fixture(failedChecks: failedFixture)
+        #expect(pr.effectiveFailedChecks(ignoredChecks: []).count == 2)
+    }
+
+    // effectiveCIStatus
+
+    @Test func effectiveCIStatusIgnoringFailingCheckBecomesSuccess() {
+        let pr = PullRequest.fixture(
+            ciStatus: .failure,
+            checkResults: [
+                .init(name: "build", status: .passed, detailsUrl: nil),
+                .init(name: "flaky", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(pr.effectiveCIStatus(ignoredChecks: ["flaky"]) == .success)
+    }
+
+    @Test func effectiveCIStatusIgnoringAllChecksReturnsUnknown() {
+        let pr = PullRequest.fixture(
+            ciStatus: .failure,
+            checkResults: [
+                .init(name: "only-check", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(pr.effectiveCIStatus(ignoredChecks: ["only-check"]) == .unknown)
+    }
+
+    @Test func effectiveCIStatusWithPendingAfterFilteringReturnsPending() {
+        let pr = PullRequest.fixture(
+            ciStatus: .failure,
+            checkResults: [
+                .init(name: "build", status: .pending, detailsUrl: nil),
+                .init(name: "flaky", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(pr.effectiveCIStatus(ignoredChecks: ["flaky"]) == .pending)
+    }
+
+    @Test func effectiveCIStatusWithEmptyIgnoreListReturnsRawStatus() {
+        let pr = PullRequest.fixture(ciStatus: .failure)
+        #expect(pr.effectiveCIStatus(ignoredChecks: []) == .failure)
+    }
+
+    // effectiveCheckCounts
+
+    @Test func effectiveCheckCountsExcludeIgnoredChecks() {
+        let pr = PullRequest.fixture(checkResults: checksFixture)
+        let counts = pr.effectiveCheckCounts(ignoredChecks: ["graphite/stack"])
+        #expect(counts.total == 3)
+        #expect(counts.passed == 1)
+        #expect(counts.failed == 1)
+    }
+
+    // effectiveStatusColor
+
+    @Test func effectiveStatusColorReflectsEffectiveCIStatus() {
+        let pr = PullRequest.fixture(
+            state: .open, ciStatus: .failure,
+            checkResults: [
+                .init(name: "build", status: .passed, detailsUrl: nil),
+                .init(name: "flaky", status: .failed, detailsUrl: nil),
+            ]
+        )
+        #expect(pr.statusColor == .red)
+        #expect(pr.effectiveStatusColor(ignoredChecks: ["flaky"]) == .green)
+    }
+
+    @Test func effectiveStatusColorForDraftIsAlwaysGray() {
+        let pr = PullRequest.fixture(state: .draft, ciStatus: .failure)
+        #expect(pr.effectiveStatusColor(ignoredChecks: ["anything"]) == .gray)
+    }
 }

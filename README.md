@@ -214,16 +214,18 @@ User-facing strings are centralized in `Sources/App/Strings.swift`. When localiz
 
 ## Future Improvements
 
+### Features
+
+- [ ] **Hide already-approved PRs on the Reviews tab** -- Option to filter out PRs where you've already submitted an approval, so the Reviews tab only shows PRs that still need your attention.
+
 ### Performance
 
 - [ ] **Adaptive window sizing** -- `ContentView` and `SettingsView` use centralized frame constants but don't adapt to Dynamic Type, accessibility settings, or content amount.
 - [ ] **Combine GraphQL queries** -- Merge the two per-refresh queries (authored + reviews) into a single aliased GraphQL query to halve process spawn overhead.
-- [ ] **Cache `menuBarImage`** -- Only regenerate the menu bar icon when `overallStatusIcon` or `hasFailure` actually changes.
 - [ ] **Smart polling** -- Back off on errors, pause when the system is asleep, reduce frequency when no PRs are tracked.
 
 ### Architecture
 
-- [ ] **Remove `@unchecked Sendable`** from `GitHubService` -- Either make it an `actor` or add proper synchronization to `run()`.
 - [ ] **Move business logic out of views** -- `ContentView.groupedPRs` contains domain sorting logic that can't be unit tested.
 
 ### Data

@@ -132,26 +132,81 @@ struct PullRequest: Identifiable, Codable, Equatable {
 
     // MARK: Readiness
 
-    /// Whether this PR is ready for review given the user's required-check configuration.
-    func isReady(requiredChecks: [String]) -> Bool {
+    /// Whether this PR is ready for review given the user's check configuration.
+    func isReady(requiredChecks: [String], ignoredChecks: [String] = []) -> Bool {
         guard state != .draft else { return false }
         guard mergeable != .conflicting else { return false }
 
         if requiredChecks.isEmpty {
-            // No specific checks configured — use overall CI rollup
-            return ciStatus != .failure && ciStatus != .pending
+            // Default mode: use effective CI status (excluding ignored checks)
+            let effectiveStatus = effectiveCIStatus(ignoredChecks: ignoredChecks)
+            return effectiveStatus != .failure && effectiveStatus != .pending
         }
 
-        // Only evaluate the named required checks.
-        // If a required check name isn't present on this PR (e.g., the repo
-        // doesn't have that CI job), it's ignored — assumed passing.
+        // Required-checks mode: evaluate only required checks (minus any ignored).
+        // With mutual exclusion enforced by the UI, a check shouldn't be in both
+        // lists — but we handle it defensively by skipping ignored checks.
+        let ignored = Set(ignoredChecks)
         for name in requiredChecks {
+            if ignored.contains(name) { continue }
             guard let check = checkResults.first(where: { $0.name == name }) else {
                 continue
             }
             if check.status != .passed { return false }
         }
         return true
+    }
+
+    // MARK: - Effective Values (Ignored Checks Filtering)
+
+    /// Check results excluding ignored check names.
+    func effectiveCheckResults(ignoredChecks: [String]) -> [CheckResult] {
+        guard !ignoredChecks.isEmpty else { return checkResults }
+        let ignored = Set(ignoredChecks)
+        return checkResults.filter { !ignored.contains($0.name) }
+    }
+
+    /// Failed checks excluding ignored check names.
+    func effectiveFailedChecks(ignoredChecks: [String]) -> [CheckInfo] {
+        guard !ignoredChecks.isEmpty else { return failedChecks }
+        let ignored = Set(ignoredChecks)
+        return failedChecks.filter { !ignored.contains($0.name) }
+    }
+
+    /// Recomputed CI status excluding ignored checks.
+    func effectiveCIStatus(ignoredChecks: [String]) -> CIStatus {
+        guard !ignoredChecks.isEmpty else { return ciStatus }
+        let effective = effectiveCheckResults(ignoredChecks: ignoredChecks)
+        if effective.isEmpty { return .unknown }
+        if effective.contains(where: { $0.status == .failed }) { return .failure }
+        if effective.contains(where: { $0.status == .pending }) { return .pending }
+        return .success
+    }
+
+    /// Recomputed check counts excluding ignored checks.
+    func effectiveCheckCounts(ignoredChecks: [String]) -> (total: Int, passed: Int, failed: Int) {
+        let effective = effectiveCheckResults(ignoredChecks: ignoredChecks)
+        let passed = effective.filter { $0.status == .passed }.count
+        let failed = effective.filter { $0.status == .failed }.count
+        return (total: effective.count, passed: passed, failed: failed)
+    }
+
+    /// Status color recomputed with effective CI status (for ignored checks filtering).
+    func effectiveStatusColor(ignoredChecks: [String]) -> Color {
+        guard !ignoredChecks.isEmpty else { return statusColor }
+        switch state {
+        case .merged: return .purple
+        case .closed: return .gray
+        case .draft: return .gray
+        case .open:
+            if isInMergeQueue { return .purple }
+            switch effectiveCIStatus(ignoredChecks: ignoredChecks) {
+            case .success: return .green
+            case .failure: return .red
+            case .pending: return .orange
+            case .unknown: return .gray
+            }
+        }
     }
 }
 
@@ -161,13 +216,16 @@ struct PullRequest: Identifiable, Codable, Equatable {
 struct FilterSettings: Codable, Equatable {
     var hideDrafts: Bool
     var requiredCheckNames: [String]
+    var ignoredCheckNames: [String]
 
     init(
         hideDrafts: Bool = true,
-        requiredCheckNames: [String] = []
+        requiredCheckNames: [String] = [],
+        ignoredCheckNames: [String] = []
     ) {
         self.hideDrafts = hideDrafts
         self.requiredCheckNames = requiredCheckNames
+        self.ignoredCheckNames = ignoredCheckNames
     }
 
     // Custom decoder: use decodeIfPresent so that adding new filter
@@ -176,6 +234,7 @@ struct FilterSettings: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         hideDrafts = try container.decodeIfPresent(Bool.self, forKey: .hideDrafts) ?? true
         requiredCheckNames = try container.decodeIfPresent([String].self, forKey: .requiredCheckNames) ?? []
+        ignoredCheckNames = try container.decodeIfPresent([String].self, forKey: .ignoredCheckNames) ?? []
     }
 
     /// Filter a list of PRs for the Reviews tab, removing draft PRs when configured.

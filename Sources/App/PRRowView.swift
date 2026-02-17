@@ -2,7 +2,26 @@ import SwiftUI
 
 struct PRRowView: View {
     let pullRequest: PullRequest
+    var ignoredCheckNames: [String] = []
     @State private var showFailures = false
+
+    // MARK: - Effective Display Values (filtered for ignored checks)
+
+    private var displayCIStatus: PullRequest.CIStatus {
+        pullRequest.effectiveCIStatus(ignoredChecks: ignoredCheckNames)
+    }
+
+    private var displayFailedChecks: [PullRequest.CheckInfo] {
+        pullRequest.effectiveFailedChecks(ignoredChecks: ignoredCheckNames)
+    }
+
+    private var displayStatusColor: Color {
+        pullRequest.effectiveStatusColor(ignoredChecks: ignoredCheckNames)
+    }
+
+    private var displayCheckCounts: (total: Int, passed: Int, failed: Int) {
+        pullRequest.effectiveCheckCounts(ignoredChecks: ignoredCheckNames)
+    }
 
     var body: some View {
         Button {
@@ -11,7 +30,7 @@ struct PRRowView: View {
             HStack(spacing: 10) {
                 // Status dot
                 Circle()
-                    .fill(pullRequest.statusColor)
+                    .fill(displayStatusColor)
                     .frame(width: 10, height: 10)
                     .accessibilityHidden(true)
 
@@ -41,7 +60,7 @@ struct PRRowView: View {
                         conflictBadge
                         ciBadge
                         if pullRequest.state != .draft &&
-                            (pullRequest.ciStatus == .success || pullRequest.ciStatus == .unknown) {
+                            (displayCIStatus == .success || displayCIStatus == .unknown) {
                             reviewBadge
                         }
                         Spacer()
@@ -53,10 +72,10 @@ struct PRRowView: View {
                     }
 
                     // Expandable failed checks list
-                    if showFailures && !pullRequest.failedChecks.isEmpty {
+                    if showFailures && !displayFailedChecks.isEmpty {
                         VStack(alignment: .leading, spacing: 3) {
-                            ForEach(pullRequest.failedChecks.indices, id: \.self) { index in
-                                let check = pullRequest.failedChecks[index]
+                            ForEach(displayFailedChecks.indices, id: \.self) { index in
+                                let check = displayFailedChecks[index]
                                 Button {
                                     if let url = check.detailsUrl {
                                         NSWorkspace.shared.open(url)
@@ -166,9 +185,9 @@ struct PRRowView: View {
 
     @ViewBuilder
     private var ciBadge: some View {
-        if pullRequest.checksTotal > 0 {
+        if displayCheckCounts.total > 0 {
             Button {
-                if !pullRequest.failedChecks.isEmpty {
+                if !displayFailedChecks.isEmpty {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         showFailures.toggle()
                     }
@@ -177,9 +196,9 @@ struct PRRowView: View {
                 badgePill(
                     icon: ciIcon,
                     text: ciText,
-                    color: pullRequest.ciStatus.color
+                    color: displayCIStatus.color
                 ) {
-                    if !pullRequest.failedChecks.isEmpty {
+                    if !displayFailedChecks.isEmpty {
                         Image(systemName: showFailures ? "chevron.up" : "chevron.down")
                             .font(.system(size: 7, weight: .bold))
                     }
@@ -187,12 +206,12 @@ struct PRRowView: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel("CI status: \(ciText)")
-            .accessibilityHint(!pullRequest.failedChecks.isEmpty ? "Double-tap to show failed checks" : "")
+            .accessibilityHint(!displayFailedChecks.isEmpty ? "Double-tap to show failed checks" : "")
         }
     }
 
     private var ciIcon: String {
-        switch pullRequest.ciStatus {
+        switch displayCIStatus {
         case .success: return "checkmark.circle.fill"
         case .failure: return "xmark.circle.fill"
         case .pending: return "clock.fill"
@@ -201,14 +220,15 @@ struct PRRowView: View {
     }
 
     private var ciText: String {
-        if pullRequest.checksFailed > 0 {
-            return Strings.CI.failedCount(pullRequest.checksFailed)
+        let counts = displayCheckCounts
+        if counts.failed > 0 {
+            return Strings.CI.failedCount(counts.failed)
         }
-        let pending = pullRequest.checksTotal - pullRequest.checksPassed - pullRequest.checksFailed
+        let pending = counts.total - counts.passed - counts.failed
         if pending > 0 {
-            return Strings.CI.checksProgress(passed: pullRequest.checksPassed, total: pullRequest.checksTotal)
+            return Strings.CI.checksProgress(passed: counts.passed, total: counts.total)
         }
-        return Strings.CI.checksPassed(passed: pullRequest.checksPassed, total: pullRequest.checksTotal)
+        return Strings.CI.checksPassed(passed: counts.passed, total: counts.total)
     }
 
     // MARK: - Badge Helper

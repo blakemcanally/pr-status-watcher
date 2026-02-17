@@ -66,6 +66,10 @@ extension PullRequest {
     @Test func defaultRequiredCheckNamesIsEmpty() {
         #expect(FilterSettings().requiredCheckNames.isEmpty)
     }
+
+    @Test func defaultIgnoredCheckNamesIsEmpty() {
+        #expect(FilterSettings().ignoredCheckNames.isEmpty)
+    }
 }
 
 // MARK: - FilterSettings Codable
@@ -109,6 +113,31 @@ extension PullRequest {
         let json = #"{"hideDrafts": true}"#.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: json)
         #expect(decoded.requiredCheckNames.isEmpty)
+    }
+
+    @Test func codableRoundTripWithIgnoredCheckNames() throws {
+        let original = FilterSettings(ignoredCheckNames: ["flaky-check", "graphite/stack"])
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
+        #expect(decoded.ignoredCheckNames == ["flaky-check", "graphite/stack"])
+    }
+
+    @Test func decodingWithoutIgnoredCheckNamesDefaultsToEmpty() throws {
+        let json = #"{"hideDrafts": true, "requiredCheckNames": ["build"]}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: json)
+        #expect(decoded.ignoredCheckNames.isEmpty)
+        #expect(decoded.requiredCheckNames == ["build"])
+    }
+
+    @Test func codableRoundTripWithBothCheckLists() throws {
+        let original = FilterSettings(
+            requiredCheckNames: ["build"],
+            ignoredCheckNames: ["flaky-lint"]
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
+        #expect(decoded.requiredCheckNames == ["build"])
+        #expect(decoded.ignoredCheckNames == ["flaky-lint"])
     }
 }
 
@@ -218,6 +247,16 @@ extension PullRequest {
         let loaded = try #require(UserDefaults.standard.data(forKey: testKey))
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: loaded)
         #expect(decoded == original)
+    }
+
+    @Test func persistAndReloadIgnoredCheckNamesViaUserDefaults() throws {
+        let original = FilterSettings(ignoredCheckNames: ["flaky-check"])
+        let data = try JSONEncoder().encode(original)
+        UserDefaults.standard.set(data, forKey: testKey)
+
+        let loaded = try #require(UserDefaults.standard.data(forKey: testKey))
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: loaded)
+        #expect(decoded.ignoredCheckNames == ["flaky-check"])
     }
 
     @Test func missingKeyReturnsNilData() {

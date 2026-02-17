@@ -32,11 +32,21 @@ struct ContentView: View {
     // MARK: - Readiness Partitioning (Reviews tab only)
 
     private var readyPRs: [PullRequest] {
-        filteredPRs.filter { $0.isReady(requiredChecks: manager.filterSettings.requiredCheckNames) }
+        filteredPRs.filter {
+            $0.isReady(
+                requiredChecks: manager.filterSettings.requiredCheckNames,
+                ignoredChecks: manager.filterSettings.ignoredCheckNames
+            )
+        }
     }
 
     private var notReadyPRs: [PullRequest] {
-        filteredPRs.filter { !$0.isReady(requiredChecks: manager.filterSettings.requiredCheckNames) }
+        filteredPRs.filter {
+            !$0.isReady(
+                requiredChecks: manager.filterSettings.requiredCheckNames,
+                ignoredChecks: manager.filterSettings.ignoredCheckNames
+            )
+        }
     }
 
     private var groupedReadyPRs: [(repo: String, prs: [PullRequest])] {
@@ -167,6 +177,7 @@ struct ContentView: View {
         groups: [(repo: String, prs: [PullRequest])]
     ) -> some View {
         let isCollapsed = manager.collapsedReadinessSections.contains(key)
+        let ignoredChecks = manager.filterSettings.ignoredCheckNames
 
         return VStack(spacing: 0) {
             readinessSectionHeader(
@@ -175,12 +186,13 @@ struct ContentView: View {
                 icon: icon,
                 color: color,
                 isCollapsed: isCollapsed,
-                prs: groups.flatMap(\.prs)
+                prs: groups.flatMap(\.prs),
+                ignoredCheckNames: ignoredChecks
             )
 
             if !isCollapsed {
                 ForEach(groups, id: \.repo) { group in
-                    repoSection(repo: group.repo, prs: group.prs)
+                    repoSection(repo: group.repo, prs: group.prs, ignoredCheckNames: ignoredChecks)
                 }
             }
         }
@@ -192,7 +204,8 @@ struct ContentView: View {
         icon: String,
         color: Color,
         isCollapsed: Bool,
-        prs: [PullRequest]
+        prs: [PullRequest],
+        ignoredCheckNames: [String] = []
     ) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
@@ -219,7 +232,7 @@ struct ContentView: View {
                     HStack(spacing: 3) {
                         ForEach(prs) { pullRequest in
                             Circle()
-                                .fill(pullRequest.statusColor)
+                                .fill(pullRequest.effectiveStatusColor(ignoredChecks: ignoredCheckNames))
                                 .frame(width: 6, height: 6)
                         }
                     }
@@ -237,7 +250,7 @@ struct ContentView: View {
 
     // MARK: - Repo Section
 
-    private func repoSection(repo: String, prs: [PullRequest]) -> some View {
+    private func repoSection(repo: String, prs: [PullRequest], ignoredCheckNames: [String] = []) -> some View {
         let isCollapsed = manager.collapsedRepos.contains(repo)
 
         return VStack(spacing: 0) {
@@ -246,7 +259,7 @@ struct ContentView: View {
             // PR rows
             if !isCollapsed {
                 ForEach(prs) { pullRequest in
-                    PRRowView(pullRequest: pullRequest)
+                    PRRowView(pullRequest: pullRequest, ignoredCheckNames: ignoredCheckNames)
                         .contextMenu {
                             Button("Open in Browser") {
                                 NSWorkspace.shared.open(pullRequest.url)

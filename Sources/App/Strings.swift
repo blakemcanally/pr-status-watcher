@@ -150,6 +150,9 @@ enum Strings {
         static let addCheckPlaceholder = "Add check name..."
         static let requiredChecksLabel = "Required CI Checks"
         static let tipText = "Check names must match the exact name shown in GitHub CI. Checks not present on a PR are ignored."
+        static let ignoredChecksLabel = "Ignored CI Checks"
+        static let ignoredChecksDescription = "These CI checks are completely hidden — they won't affect readiness or appear in the CI badge."
+        static let addIgnoredCheckPlaceholder = "Add check to ignore..."
     }
 
     // MARK: Auth
