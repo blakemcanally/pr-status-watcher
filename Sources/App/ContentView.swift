@@ -10,11 +10,19 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var selectedTab: PRTab = .myPRs
 
-    /// PRs for the currently selected tab.
+    /// PRs for the currently selected tab (excluding ignored repositories).
     private var activePRs: [PullRequest] {
         switch selectedTab {
-        case .myPRs: return manager.pullRequests
-        case .reviews: return manager.reviewPRs
+        case .myPRs: return manager.visiblePullRequests
+        case .reviews: return manager.visibleReviewPRs
+        }
+    }
+
+    /// Whether there are raw PRs before repository filtering (for empty state detection).
+    private var hasRawPRs: Bool {
+        switch selectedTab {
+        case .myPRs: return !manager.pullRequests.isEmpty
+        case .reviews: return !manager.reviewPRs.isEmpty
         }
     }
 
@@ -117,10 +125,12 @@ struct ContentView: View {
 
     private var prList: some View {
         Group {
-            if activePRs.isEmpty && !manager.hasCompletedInitialLoad {
+            if !hasRawPRs && !manager.hasCompletedInitialLoad {
                 loadingState
-            } else if activePRs.isEmpty {
+            } else if !hasRawPRs {
                 emptyState
+            } else if activePRs.isEmpty {
+                ignoredReposEmptyState
             } else if filteredPRs.isEmpty {
                 filteredEmptyState
             } else if selectedTab == .reviews {
@@ -388,6 +398,26 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity)
         .accessibilityLabel(selectedTab == .myPRs ? "No open pull requests" : "No review requests")
+    }
+
+    private var ignoredReposEmptyState: some View {
+        VStack(spacing: 10) {
+            Spacer()
+            Image(systemName: "eye.slash")
+                .font(.system(size: 32))
+                .foregroundColor(.secondary)
+            Text(Strings.EmptyState.allReposIgnoredTitle)
+                .font(.title3)
+                .foregroundColor(.secondary)
+            Text(Strings.EmptyState.allReposIgnoredSubtitle)
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityLabel("All pull requests from ignored repositories")
     }
 
     private var filteredEmptyState: some View {

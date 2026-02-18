@@ -80,6 +80,10 @@ extension PullRequest {
     @Test func defaultHideNotReadyIsFalse() {
         #expect(!FilterSettings().hideNotReady)
     }
+
+    @Test func defaultIgnoredRepositoriesIsEmpty() {
+        #expect(FilterSettings().ignoredRepositories.isEmpty)
+    }
 }
 
 // MARK: - FilterSettings Codable
@@ -174,6 +178,31 @@ extension PullRequest {
         let json = #"{"hideDrafts": true}"#.data(using: .utf8)!
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: json)
         #expect(!decoded.hideNotReady)
+    }
+
+    @Test func codableRoundTripWithIgnoredRepositories() throws {
+        let original = FilterSettings(ignoredRepositories: ["org/repo-a", "org/repo-b"])
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
+        #expect(decoded.ignoredRepositories == ["org/repo-a", "org/repo-b"])
+    }
+
+    @Test func decodingWithoutIgnoredRepositoriesDefaultsToEmpty() throws {
+        let json = #"{"hideDrafts": true, "requiredCheckNames": ["build"]}"#.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: json)
+        #expect(decoded.ignoredRepositories.isEmpty)
+        #expect(decoded.requiredCheckNames == ["build"])
+    }
+
+    @Test func codableRoundTripWithIgnoredReposAndIgnoredChecks() throws {
+        let original = FilterSettings(
+            ignoredCheckNames: ["flaky-lint"],
+            ignoredRepositories: ["org/noisy-repo"]
+        )
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
+        #expect(decoded.ignoredCheckNames == ["flaky-lint"])
+        #expect(decoded.ignoredRepositories == ["org/noisy-repo"])
     }
 }
 
@@ -504,6 +533,16 @@ extension PullRequest {
         let loaded = try #require(UserDefaults.standard.data(forKey: testKey))
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: loaded)
         #expect(decoded.hideApprovedByMe)
+    }
+
+    @Test func persistAndReloadIgnoredRepositoriesViaUserDefaults() throws {
+        let original = FilterSettings(ignoredRepositories: ["org/repo-a"])
+        let data = try JSONEncoder().encode(original)
+        UserDefaults.standard.set(data, forKey: testKey)
+
+        let loaded = try #require(UserDefaults.standard.data(forKey: testKey))
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: loaded)
+        #expect(decoded.ignoredRepositories == ["org/repo-a"])
     }
 
     @Test func missingKeyReturnsNilData() {

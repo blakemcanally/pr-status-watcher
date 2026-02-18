@@ -220,19 +220,22 @@ struct FilterSettings: Codable, Equatable {
     var hideNotReady: Bool
     var requiredCheckNames: [String]
     var ignoredCheckNames: [String]
+    var ignoredRepositories: [String]
 
     init(
         hideDrafts: Bool = true,
         hideApprovedByMe: Bool = false,
         hideNotReady: Bool = false,
         requiredCheckNames: [String] = [],
-        ignoredCheckNames: [String] = []
+        ignoredCheckNames: [String] = [],
+        ignoredRepositories: [String] = []
     ) {
         self.hideDrafts = hideDrafts
         self.hideApprovedByMe = hideApprovedByMe
         self.hideNotReady = hideNotReady
         self.requiredCheckNames = requiredCheckNames
         self.ignoredCheckNames = ignoredCheckNames
+        self.ignoredRepositories = ignoredRepositories
     }
 
     // Custom decoder: use decodeIfPresent so that adding new filter
@@ -244,6 +247,7 @@ struct FilterSettings: Codable, Equatable {
         hideNotReady = try container.decodeIfPresent(Bool.self, forKey: .hideNotReady) ?? false
         requiredCheckNames = try container.decodeIfPresent([String].self, forKey: .requiredCheckNames) ?? []
         ignoredCheckNames = try container.decodeIfPresent([String].self, forKey: .ignoredCheckNames) ?? []
+        ignoredRepositories = try container.decodeIfPresent([String].self, forKey: .ignoredRepositories) ?? []
     }
 
     /// Filter a list of PRs for the Reviews tab, removing draft, approved, and/or not-ready PRs when configured.

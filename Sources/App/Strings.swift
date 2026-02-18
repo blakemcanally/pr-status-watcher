@@ -142,6 +142,10 @@ enum Strings {
         static let filteredNotReadySubtitle = "No review requests need your attention right now"
         static let filteredMixedTitle = "All review requests hidden"
         static let filteredMixedSubtitle = "Adjust your filters in Settings to see them"
+
+        // Ignored repositories empty states
+        static let allReposIgnoredTitle = "All repositories ignored"
+        static let allReposIgnoredSubtitle = "Every PR is from an ignored repository. Adjust your list in Settings to see them."
     }
 
     // MARK: Readiness
@@ -161,6 +165,15 @@ enum Strings {
         static let ignoredChecksLabel = "Ignored CI Checks"
         static let ignoredChecksDescription = "These CI checks are completely hidden — they won't affect readiness or appear in the CI badge."
         static let addIgnoredCheckPlaceholder = "Add check to ignore..."
+    }
+
+    // MARK: Repositories
+
+    enum Repositories {
+        static let ignoredReposLabel = "Ignored Repositories"
+        static let ignoredReposDescription = "PRs from these repositories are completely hidden from both tabs, notifications, and the status bar."
+        static let addIgnoredRepoPlaceholder = "Add repository to ignore..."
+        static let tipText = "Use the full name format: owner/repo (e.g. myorg/my-repo)"
     }
 
     // MARK: Auth

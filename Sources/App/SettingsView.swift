@@ -7,6 +7,7 @@ struct SettingsView: View {
     @State private var loginError: String?
     @State private var newCheckName = ""
     @State private var newIgnoredCheckName = ""
+    @State private var newIgnoredRepo = ""
 
     private let intervalOptions: [(label: String, seconds: Int)] = [
         ("30 seconds", 30),
@@ -249,6 +250,88 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                Divider()
+
+                // Ignored Repositories Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(Strings.Repositories.ignoredReposLabel)
+                        .font(.headline)
+
+                    Text(Strings.Repositories.ignoredReposDescription)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    // Current ignored repos list
+                    if !manager.filterSettings.ignoredRepositories.isEmpty {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(manager.filterSettings.ignoredRepositories, id: \.self) { name in
+                                HStack {
+                                    Text(name)
+                                        .font(.system(.caption, design: .monospaced))
+                                    Spacer()
+                                    Button {
+                                        manager.filterSettings.ignoredRepositories.removeAll { $0 == name }
+                                    } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .accessibilityLabel("Remove \(name)")
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.secondary.opacity(0.08))
+                                .cornerRadius(4)
+                            }
+                        }
+                    }
+
+                    // Add new ignored repo
+                    HStack(spacing: 6) {
+                        TextField(Strings.Repositories.addIgnoredRepoPlaceholder, text: $newIgnoredRepo)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(.caption, design: .monospaced))
+                            .onSubmit { addIgnoredRepo() }
+
+                        Button {
+                            addIgnoredRepo()
+                        } label: {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.body)
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(newIgnoredRepo.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .accessibilityLabel("Add ignored repository")
+                    }
+
+                    // Autocomplete suggestions
+                    let repoSuggestions = ignoredRepoSuggestions
+                    if !repoSuggestions.isEmpty && !newIgnoredRepo.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 4) {
+                                ForEach(repoSuggestions, id: \.self) { suggestion in
+                                    Button(suggestion) {
+                                        newIgnoredRepo = suggestion
+                                        addIgnoredRepo()
+                                    }
+                                    .font(.caption2)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(Color.accentColor.opacity(0.1))
+                                    .foregroundColor(.accentColor)
+                                    .cornerRadius(4)
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+
+                    Text(Strings.Repositories.tipText)
+                        .font(.caption2)
+                        .foregroundColor(.secondary.opacity(0.7))
+                }
             }
             .padding(24)
         }
@@ -311,6 +394,24 @@ struct SettingsView: View {
             .union(manager.filterSettings.requiredCheckNames)
         let query = newIgnoredCheckName.lowercased()
         return manager.availableCheckNames
+            .filter { !excluded.contains($0) && $0.lowercased().contains(query) }
+    }
+
+    // MARK: - Ignored Repositories Helpers
+
+    private func addIgnoredRepo() {
+        let trimmed = newIgnoredRepo.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty,
+              !manager.filterSettings.ignoredRepositories.contains(trimmed) else { return }
+        manager.filterSettings.ignoredRepositories.append(trimmed)
+        newIgnoredRepo = ""
+    }
+
+    /// Autocomplete for ignored repos: exclude repos already in the ignore list.
+    private var ignoredRepoSuggestions: [String] {
+        let excluded = Set(manager.filterSettings.ignoredRepositories)
+        let query = newIgnoredRepo.lowercased()
+        return manager.availableRepositories
             .filter { !excluded.contains($0) && $0.lowercased().contains(query) }
     }
 }

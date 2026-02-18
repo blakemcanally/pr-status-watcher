@@ -515,6 +515,155 @@ import Foundation
         #expect(manager.lastError?.contains("Invalid response") == true)
     }
 
+    // MARK: - Visible PRs (Ignored Repositories)
+
+    @Test func visiblePullRequestsWithEmptyIgnoreListReturnsAll() async {
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1),
+            PullRequest.fixture(owner: "org", repo: "repo-b", number: 2),
+        ])
+        mockService.reviewPRsResult = .success([])
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.visiblePullRequests.count == 2)
+    }
+
+    @Test func visiblePullRequestsFiltersIgnoredRepo() async {
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1),
+            PullRequest.fixture(owner: "org", repo: "repo-b", number: 2),
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 3),
+        ])
+        mockService.reviewPRsResult = .success([])
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        manager.filterSettings = FilterSettings(ignoredRepositories: ["org/repo-b"])
+        await manager.refreshAll()
+
+        #expect(manager.visiblePullRequests.count == 2)
+        #expect(manager.visiblePullRequests.allSatisfy { $0.repoFullName == "org/repo-a" })
+    }
+
+    @Test func visibleReviewPRsFiltersIgnoredRepo() async {
+        mockService.myPRsResult = .success([])
+        mockService.reviewPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1),
+            PullRequest.fixture(owner: "org", repo: "repo-b", number: 2),
+        ])
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        manager.filterSettings = FilterSettings(ignoredRepositories: ["org/repo-a"])
+        await manager.refreshAll()
+
+        #expect(manager.visibleReviewPRs.count == 1)
+        #expect(manager.visibleReviewPRs.first?.repoFullName == "org/repo-b")
+    }
+
+    @Test func visiblePullRequestsFiltersMultipleIgnoredRepos() async {
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1),
+            PullRequest.fixture(owner: "org", repo: "repo-b", number: 2),
+            PullRequest.fixture(owner: "org", repo: "repo-c", number: 3),
+        ])
+        mockService.reviewPRsResult = .success([])
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        manager.filterSettings = FilterSettings(ignoredRepositories: ["org/repo-a", "org/repo-c"])
+        await manager.refreshAll()
+
+        #expect(manager.visiblePullRequests.count == 1)
+        #expect(manager.visiblePullRequests.first?.repoFullName == "org/repo-b")
+    }
+
+    @Test func availableRepositoriesUnionsBothTabs() async {
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1),
+        ])
+        mockService.reviewPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-b", number: 2),
+        ])
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+
+        #expect(manager.availableRepositories == ["org/repo-a", "org/repo-b"])
+    }
+
+    @Test func availableRepositoriesUsesRawDataNotFiltered() async {
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1),
+            PullRequest.fixture(owner: "org", repo: "repo-b", number: 2),
+        ])
+        mockService.reviewPRsResult = .success([])
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        manager.filterSettings = FilterSettings(ignoredRepositories: ["org/repo-b"])
+        await manager.refreshAll()
+
+        #expect(manager.availableRepositories.contains("org/repo-b"))
+        #expect(manager.availableRepositories.count == 2)
+    }
+
+    @Test func statusBarUsesVisiblePRsNotRaw() async {
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1, ciStatus: .success),
+            PullRequest.fixture(owner: "org", repo: "repo-b", number: 2, ciStatus: .failure),
+        ])
+        mockService.reviewPRsResult = .success([])
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        manager.filterSettings = FilterSettings(ignoredRepositories: ["org/repo-b"])
+        await manager.refreshAll()
+
+        #expect(!manager.hasFailure)
+        #expect(manager.openCount == 1)
+    }
+
+    @Test func notificationsSuppressedForIgnoredRepos() async {
+        // First load
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1, ciStatus: .pending),
+            PullRequest.fixture(owner: "org", repo: "repo-b", number: 2, ciStatus: .pending),
+        ])
+        mockService.reviewPRsResult = .success([])
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        manager.filterSettings = FilterSettings(ignoredRepositories: ["org/repo-b"])
+        await manager.refreshAll()
+        #expect(mockNotifications.sentNotifications.isEmpty)
+
+        // Second load — repo-b fails (but it's ignored)
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1, ciStatus: .pending),
+            PullRequest.fixture(owner: "org", repo: "repo-b", number: 2, ciStatus: .failure),
+        ])
+        await manager.refreshAll()
+
+        #expect(mockNotifications.sentNotifications.isEmpty)
+    }
+
+    @Test func notificationsFiredForVisibleRepos() async {
+        // First load
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1, ciStatus: .pending),
+        ])
+        mockService.reviewPRsResult = .success([])
+        let manager = makeManager()
+        manager.ghUser = "testuser"
+        await manager.refreshAll()
+        #expect(mockNotifications.sentNotifications.isEmpty)
+
+        // Second load — repo-a fails (visible, should notify)
+        mockService.myPRsResult = .success([
+            PullRequest.fixture(owner: "org", repo: "repo-a", number: 1, ciStatus: .failure),
+        ])
+        await manager.refreshAll()
+
+        #expect(mockNotifications.sentNotifications.count == 1)
+    }
+
     // MARK: - Large Result Sets
 
     @Test func refreshAllHandlesLargeResultSet() async {

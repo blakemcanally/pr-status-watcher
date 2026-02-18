@@ -51,6 +51,30 @@ final class PRManager: ObservableObject {
         return names.sorted()
     }
 
+    // MARK: - Visible PRs (Ignored Repositories Filtering)
+
+    /// My PRs excluding ignored repositories.
+    var visiblePullRequests: [PullRequest] {
+        let ignored = Set(filterSettings.ignoredRepositories)
+        guard !ignored.isEmpty else { return pullRequests }
+        return pullRequests.filter { !ignored.contains($0.repoFullName) }
+    }
+
+    /// Review PRs excluding ignored repositories.
+    var visibleReviewPRs: [PullRequest] {
+        let ignored = Set(filterSettings.ignoredRepositories)
+        guard !ignored.isEmpty else { return reviewPRs }
+        return reviewPRs.filter { !ignored.contains($0.repoFullName) }
+    }
+
+    /// All unique repository names seen across all PRs, sorted alphabetically.
+    /// Uses raw (unfiltered) data so the user can discover repos to add to the ignore list.
+    var availableRepositories: [String] {
+        let names = Set(pullRequests.map(\.repoFullName))
+            .union(Set(reviewPRs.map(\.repoFullName)))
+        return names.sorted()
+    }
+
     @Published var filterSettings: FilterSettings = FilterSettings() {
         didSet { settingsStore.saveFilterSettings(filterSettings) }
     }
@@ -110,28 +134,28 @@ final class PRManager: ObservableObject {
     // MARK: - Menu Bar Icon
 
     var overallStatusIcon: String {
-        PRStatusSummary.overallStatusIcon(for: pullRequests)
+        PRStatusSummary.overallStatusIcon(for: visiblePullRequests)
     }
 
     var hasFailure: Bool {
-        PRStatusSummary.hasFailure(in: pullRequests)
+        PRStatusSummary.hasFailure(in: visiblePullRequests)
     }
 
     var openCount: Int {
-        PRStatusSummary.openCount(in: pullRequests)
+        PRStatusSummary.openCount(in: visiblePullRequests)
     }
 
     var draftCount: Int {
-        PRStatusSummary.draftCount(in: pullRequests)
+        PRStatusSummary.draftCount(in: visiblePullRequests)
     }
 
     var queuedCount: Int {
-        PRStatusSummary.queuedCount(in: pullRequests)
+        PRStatusSummary.queuedCount(in: visiblePullRequests)
     }
 
     var statusBarSummary: String {
-        let filteredReviews = filterSettings.applyReviewFilters(to: reviewPRs)
-        return PRStatusSummary.statusBarSummary(for: pullRequests, reviewPRs: filteredReviews)
+        let filteredReviews = filterSettings.applyReviewFilters(to: visibleReviewPRs)
+        return PRStatusSummary.statusBarSummary(for: visiblePullRequests, reviewPRs: filteredReviews)
     }
 
     /// Cached menu bar image — only regenerated when visual inputs change.
@@ -242,17 +266,21 @@ final class PRManager: ObservableObject {
         switch myPRs {
         case .success(let prs):
             logger.info("refreshAll: my PRs fetched (\(prs.count) results)")
+
+            // Set raw data first so visiblePullRequests reflects the new fetch
+            pullRequests = prs
+
             // Send notifications for status changes (skip the first load)
             if !isFirstLoad {
                 checkForStatusChanges(newPRs: prs)
             }
             isFirstLoad = false
 
-            // Update tracked state for next diff
-            previousCIStates = Dictionary(uniqueKeysWithValues: prs.map { ($0.id, $0.ciStatus) })
-            previousPRIds = Set(prs.map { $0.id })
+            // Update tracked state for next diff — use visible PRs only
+            let visible = visiblePullRequests
+            previousCIStates = Dictionary(uniqueKeysWithValues: visible.map { ($0.id, $0.ciStatus) })
+            previousPRIds = Set(visible.map { $0.id })
 
-            pullRequests = prs
             lastError = nil
         case .failure(let error):
             logger.error("refreshAll: my PRs fetch failed: \(error.localizedDescription, privacy: .public)")
@@ -295,10 +323,12 @@ final class PRManager: ObservableObject {
     }
 
     private func checkForStatusChanges(newPRs: [PullRequest]) {
+        let ignored = Set(filterSettings.ignoredRepositories)
+        let filteredPRs = ignored.isEmpty ? newPRs : newPRs.filter { !ignored.contains($0.repoFullName) }
         let notifications = changeDetector.detectChanges(
             previousCIStates: previousCIStates,
             previousPRIds: previousPRIds,
-            newPRs: newPRs
+            newPRs: filteredPRs
         )
         for notification in notifications {
             notificationService.send(
