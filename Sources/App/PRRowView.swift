@@ -92,7 +92,7 @@ struct PRRowView: View {
                                             .lineLimit(1)
                                         if check.detailsUrl != nil {
                                             Image(systemName: "arrow.up.right")
-                                                .font(.system(size: 7))
+                                                .font(.caption2)
                                                 .foregroundColor(.red.opacity(0.6))
                                         }
                                     }
@@ -217,7 +217,7 @@ struct PRRowView: View {
                 ) {
                     if !displayFailedChecks.isEmpty {
                         Image(systemName: showFailures ? "chevron.up" : "chevron.down")
-                            .font(.system(size: 7, weight: .bold))
+                            .font(.caption2.weight(.bold))
                     }
                 }
             }

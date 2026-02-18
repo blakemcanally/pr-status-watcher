@@ -50,19 +50,19 @@ enum AppConstants {
         enum ContentWindow {
             static let minWidth: CGFloat = 400
             static let idealWidth: CGFloat = 460
-            static let maxWidth: CGFloat = 560
-            static let minHeight: CGFloat = 400
+            static let maxWidth: CGFloat = 600
+            static let minHeight: CGFloat = 200
             static let idealHeight: CGFloat = 520
-            static let maxHeight: CGFloat = 700
+            static let maxHeight: CGFloat = .infinity
         }
 
         enum SettingsWindow {
             static let minWidth: CGFloat = 320
-            static let idealWidth: CGFloat = 380
-            static let maxWidth: CGFloat = 480
-            static let minHeight: CGFloat = 520
-            static let idealHeight: CGFloat = 620
-            static let maxHeight: CGFloat = 800
+            static let idealWidth: CGFloat = 400
+            static let maxWidth: CGFloat = 520
+            static let minHeight: CGFloat = 400
+            static let idealHeight: CGFloat = 660
+            static let maxHeight: CGFloat = .infinity
         }
 
         enum MenuBar {

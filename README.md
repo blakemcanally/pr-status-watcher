@@ -220,7 +220,7 @@ User-facing strings are centralized in `Sources/App/Strings.swift`. When localiz
 
 ### Performance
 
-- [ ] **Adaptive window sizing** -- `ContentView` and `SettingsView` use centralized frame constants but don't adapt to Dynamic Type, accessibility settings, or content amount.
+- [x] **Adaptive window sizing** -- Window frames use relaxed constraints (`maxHeight: .infinity`) so panels grow to fill available screen space. All view-layer fonts use semantic Dynamic Type styles for future-proofing (macOS does not yet propagate Dynamic Type to third-party apps).
 - [ ] **Combine GraphQL queries** -- Merge the two per-refresh queries (authored + reviews) into a single aliased GraphQL query to halve process spawn overhead.
 - [ ] **Smart polling** -- Back off on errors, pause when the system is asleep, reduce frequency when no PRs are tracked.
 

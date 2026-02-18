@@ -418,7 +418,7 @@ struct ContentView: View {
         VStack(spacing: 10) {
             Spacer()
             Image(systemName: selectedTab == .myPRs ? "tray" : "eye")
-                .font(.system(size: 32))
+                .font(.largeTitle)
                 .foregroundColor(.secondary)
             Text(selectedTab == .myPRs ? Strings.EmptyState.noPRsTitle : Strings.EmptyState.noReviewsTitle)
                 .font(.title3)
@@ -442,7 +442,7 @@ struct ContentView: View {
         VStack(spacing: 10) {
             Spacer()
             Image(systemName: "eye.slash")
-                .font(.system(size: 32))
+                .font(.largeTitle)
                 .foregroundColor(.secondary)
             Text(Strings.EmptyState.allReposIgnoredTitle)
                 .font(.title3)
@@ -464,7 +464,7 @@ struct ContentView: View {
         return VStack(spacing: 10) {
             Spacer()
             Image(systemName: icon)
-                .font(.system(size: 32))
+                .font(.largeTitle)
                 .foregroundColor(.secondary)
             Text(title)
                 .font(.title3)
