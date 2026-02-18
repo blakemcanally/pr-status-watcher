@@ -34,6 +34,7 @@ struct PageInfo: Codable {
 struct PRNode: Codable {
     let number: Int?
     let title: String?
+    let publishedAt: String?
     let url: String?
     let repository: RepositoryRef?
     let author: AuthorRef?

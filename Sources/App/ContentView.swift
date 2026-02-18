@@ -37,10 +37,28 @@ struct ContentView: View {
         PRGrouping.grouped(prs: filteredPRs, isReviews: selectedTab == .reviews)
     }
 
+    // MARK: - SLA Partitioning (Reviews tab only)
+
+    private var slaExceededPRs: [PullRequest] {
+        guard manager.filterSettings.reviewSLAEnabled else { return [] }
+        let minutes = manager.filterSettings.reviewSLAMinutes
+        return filteredPRs.filter { $0.isSLAExceeded(minutes: minutes) }
+    }
+
+    private var nonSLAExceededPRs: [PullRequest] {
+        guard manager.filterSettings.reviewSLAEnabled else { return filteredPRs }
+        let minutes = manager.filterSettings.reviewSLAMinutes
+        return filteredPRs.filter { !$0.isSLAExceeded(minutes: minutes) }
+    }
+
+    private var groupedSLAExceededPRs: [(repo: String, prs: [PullRequest])] {
+        PRGrouping.grouped(prs: slaExceededPRs, isReviews: true)
+    }
+
     // MARK: - Readiness Partitioning (Reviews tab only)
 
     private var readyPRs: [PullRequest] {
-        filteredPRs.filter {
+        nonSLAExceededPRs.filter {
             $0.isReady(
                 requiredChecks: manager.filterSettings.requiredCheckNames,
                 ignoredChecks: manager.filterSettings.ignoredCheckNames
@@ -49,7 +67,7 @@ struct ContentView: View {
     }
 
     private var notReadyPRs: [PullRequest] {
-        filteredPRs.filter {
+        nonSLAExceededPRs.filter {
             !$0.isReady(
                 requiredChecks: manager.filterSettings.requiredCheckNames,
                 ignoredChecks: manager.filterSettings.ignoredCheckNames
@@ -154,6 +172,15 @@ struct ContentView: View {
     private var reviewsReadinessList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                if !slaExceededPRs.isEmpty {
+                    readinessSection(
+                        key: "slaExceeded",
+                        title: Strings.SLA.slaExceeded(slaExceededPRs.count),
+                        icon: "exclamationmark.triangle.fill",
+                        color: .red,
+                        groups: groupedSLAExceededPRs
+                    )
+                }
                 if !readyPRs.isEmpty {
                     readinessSection(
                         key: "ready",
@@ -202,7 +229,12 @@ struct ContentView: View {
 
             if !isCollapsed {
                 ForEach(groups, id: \.repo) { group in
-                    repoSection(repo: group.repo, prs: group.prs, ignoredCheckNames: ignoredChecks)
+                    repoSection(
+                        repo: group.repo,
+                        prs: group.prs,
+                        sectionKey: key,
+                        ignoredCheckNames: ignoredChecks
+                    )
                 }
             }
         }
@@ -260,11 +292,17 @@ struct ContentView: View {
 
     // MARK: - Repo Section
 
-    private func repoSection(repo: String, prs: [PullRequest], ignoredCheckNames: [String] = []) -> some View {
-        let isCollapsed = manager.collapsedRepos.contains(repo)
+    private func repoSection(
+        repo: String,
+        prs: [PullRequest],
+        sectionKey: String? = nil,
+        ignoredCheckNames: [String] = []
+    ) -> some View {
+        let collapseKey = sectionKey.map { "\($0)/\(repo)" } ?? repo
+        let isCollapsed = manager.collapsedRepos.contains(collapseKey)
 
         return VStack(spacing: 0) {
-            repoHeader(repo: repo, prs: prs, isCollapsed: isCollapsed)
+            repoHeader(repo: repo, collapseKey: collapseKey, prs: prs, isCollapsed: isCollapsed)
 
             // PR rows
             if !isCollapsed {
@@ -294,10 +332,10 @@ struct ContentView: View {
         }
     }
 
-    private func repoHeader(repo: String, prs: [PullRequest], isCollapsed: Bool) -> some View {
+    private func repoHeader(repo: String, collapseKey: String, prs: [PullRequest], isCollapsed: Bool) -> some View {
         Button {
             withAnimation(.easeInOut(duration: 0.2)) {
-                manager.toggleRepoCollapsed(repo)
+                manager.toggleRepoCollapsed(collapseKey)
             }
         } label: {
             HStack(spacing: 6) {

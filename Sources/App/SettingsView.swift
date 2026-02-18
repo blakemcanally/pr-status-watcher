@@ -1,6 +1,11 @@
 import ServiceManagement
 import SwiftUI
 
+private enum SLAUnit: String, CaseIterable {
+    case minutes = "Minutes"
+    case hours = "Hours"
+}
+
 struct SettingsView: View {
     @EnvironmentObject var manager: PRManager
     @State private var launchAtLogin = SMAppService.mainApp.status == .enabled
@@ -8,6 +13,7 @@ struct SettingsView: View {
     @State private var newCheckName = ""
     @State private var newIgnoredCheckName = ""
     @State private var newIgnoredRepo = ""
+    @State private var slaUnit: SLAUnit = .hours
 
     private let intervalOptions: [(label: String, seconds: Int)] = [
         ("30 seconds", 30),
@@ -93,6 +99,43 @@ struct SettingsView: View {
                     Toggle("Hide draft PRs", isOn: filterBinding(\.hideDrafts))
                     Toggle("Hide PRs I've approved", isOn: filterBinding(\.hideApprovedByMe))
                     Toggle("Hide \"Not Ready\" PRs", isOn: filterBinding(\.hideNotReady))
+                }
+
+                Divider()
+
+                // Review SLA Section
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(Strings.SLA.settingsTitle)
+                        .font(.headline)
+
+                    Text(Strings.SLA.settingsDescription)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+
+                    Toggle(Strings.SLA.enableToggle, isOn: filterBinding(\.reviewSLAEnabled))
+
+                    if manager.filterSettings.reviewSLAEnabled {
+                        HStack(spacing: 8) {
+                            Text(Strings.SLA.deadlineLabel)
+                                .font(.caption)
+
+                            TextField("", value: slaValueBinding, format: .number)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 60)
+
+                            Picker("", selection: $slaUnit) {
+                                ForEach(SLAUnit.allCases, id: \.self) { unit in
+                                    Text(unit.rawValue).tag(unit)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .frame(width: 140)
+                        }
+                    }
+                }
+                .onAppear {
+                    let minutes = manager.filterSettings.reviewSLAMinutes
+                    slaUnit = (minutes >= 60 && minutes % 60 == 0) ? .hours : .minutes
                 }
 
                 Divider()
@@ -349,6 +392,25 @@ struct SettingsView: View {
         Binding(
             get: { manager.filterSettings[keyPath: keyPath] },
             set: { manager.filterSettings[keyPath: keyPath] = $0 }
+        )
+    }
+
+    private var slaValueBinding: Binding<Int> {
+        Binding(
+            get: {
+                let minutes = manager.filterSettings.reviewSLAMinutes
+                switch slaUnit {
+                case .minutes: return minutes
+                case .hours: return minutes / 60
+                }
+            },
+            set: { newValue in
+                let clamped = max(1, newValue)
+                switch slaUnit {
+                case .minutes: manager.filterSettings.reviewSLAMinutes = clamped
+                case .hours: manager.filterSettings.reviewSLAMinutes = clamped * 60
+                }
+            }
         )
     }
 

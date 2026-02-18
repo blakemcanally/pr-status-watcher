@@ -290,6 +290,48 @@ import SwiftUI
     }
 }
 
+// MARK: - SLA Tests
+
+@Suite struct SLATests {
+    private let now = Date()
+    private let twoHoursAgo = Date().addingTimeInterval(-2 * 3600)
+    private let tenHoursAgo = Date().addingTimeInterval(-10 * 3600)
+
+    @Test func slaNotExceededWhenWithinDeadline() {
+        let pullRequest = PullRequest.fixture(publishedAt: twoHoursAgo)
+        #expect(!pullRequest.isSLAExceeded(minutes: 480, now: now))
+    }
+
+    @Test func slaExceededWhenPastDeadline() {
+        let pullRequest = PullRequest.fixture(publishedAt: tenHoursAgo)
+        #expect(pullRequest.isSLAExceeded(minutes: 480, now: now))
+    }
+
+    @Test func slaNotExceededWhenPublishedAtIsNil() {
+        let pullRequest = PullRequest.fixture(publishedAt: nil)
+        #expect(!pullRequest.isSLAExceeded(minutes: 480, now: now))
+    }
+
+    @Test func slaNotExceededAtExactBoundary() {
+        let exactlyAtDeadline = now.addingTimeInterval(-480 * 60)
+        let pullRequest = PullRequest.fixture(publishedAt: exactlyAtDeadline)
+        #expect(!pullRequest.isSLAExceeded(minutes: 480, now: now))
+    }
+
+    @Test func slaExceededJustPastBoundary() {
+        let justPast = now.addingTimeInterval(-480 * 60 - 1)
+        let pullRequest = PullRequest.fixture(publishedAt: justPast)
+        #expect(pullRequest.isSLAExceeded(minutes: 480, now: now))
+    }
+
+    @Test func slaWithSmallMinuteThreshold() {
+        let fiveMinutesAgo = now.addingTimeInterval(-5 * 60)
+        let pullRequest = PullRequest.fixture(publishedAt: fiveMinutesAgo)
+        #expect(!pullRequest.isSLAExceeded(minutes: 10, now: now))
+        #expect(pullRequest.isSLAExceeded(minutes: 3, now: now))
+    }
+}
+
 // MARK: - Effective Values Tests (Ignored Checks)
 
 @Suite struct EffectiveValuesTests {

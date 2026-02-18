@@ -21,6 +21,7 @@ struct PullRequest: Identifiable, Codable, Equatable {
     var headSHA: String
     var headRefName: String
     var lastFetched: Date
+    var publishedAt: Date?
     var reviewDecision: ReviewDecision
     var mergeable: MergeableState
     var queuePosition: Int?
@@ -209,6 +210,16 @@ struct PullRequest: Identifiable, Codable, Equatable {
             }
         }
     }
+
+    // MARK: - Review SLA
+
+    /// Whether this PR has exceeded the given SLA deadline.
+    /// Returns false when publishedAt is nil (PR not yet published / still a draft).
+    func isSLAExceeded(minutes: Int, now: Date = .now) -> Bool {
+        guard let published = publishedAt else { return false }
+        let deadline = published.addingTimeInterval(TimeInterval(minutes) * 60)
+        return now > deadline
+    }
 }
 
 // MARK: - Review Filter Settings
@@ -221,6 +232,8 @@ struct FilterSettings: Codable, Equatable {
     var requiredCheckNames: [String]
     var ignoredCheckNames: [String]
     var ignoredRepositories: [String]
+    var reviewSLAEnabled: Bool
+    var reviewSLAMinutes: Int
 
     init(
         hideDrafts: Bool = true,
@@ -228,7 +241,9 @@ struct FilterSettings: Codable, Equatable {
         hideNotReady: Bool = false,
         requiredCheckNames: [String] = [],
         ignoredCheckNames: [String] = [],
-        ignoredRepositories: [String] = []
+        ignoredRepositories: [String] = [],
+        reviewSLAEnabled: Bool = false,
+        reviewSLAMinutes: Int = 480
     ) {
         self.hideDrafts = hideDrafts
         self.hideApprovedByMe = hideApprovedByMe
@@ -236,6 +251,8 @@ struct FilterSettings: Codable, Equatable {
         self.requiredCheckNames = requiredCheckNames
         self.ignoredCheckNames = ignoredCheckNames
         self.ignoredRepositories = ignoredRepositories
+        self.reviewSLAEnabled = reviewSLAEnabled
+        self.reviewSLAMinutes = reviewSLAMinutes
     }
 
     // Custom decoder: use decodeIfPresent so that adding new filter
@@ -248,6 +265,8 @@ struct FilterSettings: Codable, Equatable {
         requiredCheckNames = try container.decodeIfPresent([String].self, forKey: .requiredCheckNames) ?? []
         ignoredCheckNames = try container.decodeIfPresent([String].self, forKey: .ignoredCheckNames) ?? []
         ignoredRepositories = try container.decodeIfPresent([String].self, forKey: .ignoredRepositories) ?? []
+        reviewSLAEnabled = try container.decodeIfPresent(Bool.self, forKey: .reviewSLAEnabled) ?? false
+        reviewSLAMinutes = try container.decodeIfPresent(Int.self, forKey: .reviewSLAMinutes) ?? 480
     }
 
     /// Filter a list of PRs for the Reviews tab, removing draft, approved, and/or not-ready PRs when configured.

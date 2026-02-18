@@ -23,6 +23,7 @@ extension PullRequest {
         headSHA: String = "abc1234",
         headRefName: String = "feature",
         lastFetched: Date = Date(),
+        publishedAt: Date? = nil,
         reviewDecision: ReviewDecision = .reviewRequired,
         mergeable: MergeableState = .mergeable,
         queuePosition: Int? = nil,
@@ -47,6 +48,7 @@ extension PullRequest {
             headSHA: headSHA,
             headRefName: headRefName,
             lastFetched: lastFetched,
+            publishedAt: publishedAt,
             reviewDecision: reviewDecision,
             mergeable: mergeable,
             queuePosition: queuePosition,
@@ -83,6 +85,14 @@ extension PullRequest {
 
     @Test func defaultIgnoredRepositoriesIsEmpty() {
         #expect(FilterSettings().ignoredRepositories.isEmpty)
+    }
+
+    @Test func defaultReviewSLAEnabledIsFalse() {
+        #expect(!FilterSettings().reviewSLAEnabled)
+    }
+
+    @Test func defaultReviewSLAMinutesIs480() {
+        #expect(FilterSettings().reviewSLAMinutes == 480)
     }
 }
 
@@ -203,6 +213,37 @@ extension PullRequest {
         let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
         #expect(decoded.ignoredCheckNames == ["flaky-lint"])
         #expect(decoded.ignoredRepositories == ["org/noisy-repo"])
+    }
+
+    @Test func decodingOldJSONWithoutSLAFieldsUsesDefaults() throws {
+        let json = """
+        {"hideDrafts": true, "hideApprovedByMe": false, "hideNotReady": false,
+         "requiredCheckNames": [], "ignoredCheckNames": [], "ignoredRepositories": []}
+        """
+        let data = json.data(using: .utf8)!
+        let settings = try JSONDecoder().decode(FilterSettings.self, from: data)
+        #expect(!settings.reviewSLAEnabled)
+        #expect(settings.reviewSLAMinutes == 480)
+    }
+
+    @Test func decodingJSONWithSLAFieldsPreservesValues() throws {
+        let json = """
+        {"hideDrafts": true, "hideApprovedByMe": false, "hideNotReady": false,
+         "requiredCheckNames": [], "ignoredCheckNames": [], "ignoredRepositories": [],
+         "reviewSLAEnabled": true, "reviewSLAMinutes": 240}
+        """
+        let data = json.data(using: .utf8)!
+        let settings = try JSONDecoder().decode(FilterSettings.self, from: data)
+        #expect(settings.reviewSLAEnabled)
+        #expect(settings.reviewSLAMinutes == 240)
+    }
+
+    @Test func codableRoundTripWithSLASettings() throws {
+        let original = FilterSettings(reviewSLAEnabled: true, reviewSLAMinutes: 240)
+        let data = try JSONEncoder().encode(original)
+        let decoded = try JSONDecoder().decode(FilterSettings.self, from: data)
+        #expect(decoded.reviewSLAEnabled)
+        #expect(decoded.reviewSLAMinutes == 240)
     }
 }
 

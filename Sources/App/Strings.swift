@@ -167,6 +167,23 @@ enum Strings {
         static let addIgnoredCheckPlaceholder = "Add check to ignore..."
     }
 
+    // MARK: SLA
+
+    enum SLA {
+        static let settingsTitle = "Review SLA"
+        static let settingsDescription =
+            "Highlight review requests that have been waiting longer than the deadline. " +
+            "SLA is measured in wall-clock time from when the PR was published."
+        static let enableToggle = "Enable review SLA"
+        static let deadlineLabel = "Deadline"
+        static let unitMinutes = "Minutes"
+        static let unitHours = "Hours"
+
+        static func slaExceeded(_ count: Int) -> String {
+            "SLA Exceeded (\(count))"
+        }
+    }
+
     // MARK: Repositories
 
     enum Repositories {

@@ -219,6 +219,7 @@ final class GitHubService: GitHubServiceProtocol, Sendable {
               ... on PullRequest {
                 number
                 title
+                publishedAt
                 author { login }
                 isDraft
                 state

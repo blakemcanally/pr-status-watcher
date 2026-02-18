@@ -527,6 +527,7 @@ extension PRNode {
     static func fixture(
         number: Int? = 1,
         title: String? = "Test PR",
+        publishedAt: String? = nil,
         url: String? = "https://github.com/test/repo/pull/1",
         nameWithOwner: String? = "test/repo",
         authorLogin: String? = nil,
@@ -544,6 +545,7 @@ extension PRNode {
         PRNode(
             number: number,
             title: title,
+            publishedAt: publishedAt,
             url: url,
             repository: nameWithOwner.map { PRNode.RepositoryRef(nameWithOwner: $0) },
             author: authorLogin.map { PRNode.AuthorRef(login: $0) },

@@ -1,5 +1,11 @@
 import Foundation
 
+private let iso8601Formatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime]
+    return formatter
+}()
+
 // MARK: - Node Conversion (Codable → PullRequest)
 
 extension GitHubService {
@@ -38,6 +44,8 @@ extension GitHubService {
             }
         }()
 
+        let publishedAt: Date? = node.publishedAt.flatMap { iso8601Formatter.date(from: $0) }
+
         return PullRequest(
             owner: owner,
             repo: repo,
@@ -54,6 +62,7 @@ extension GitHubService {
             headSHA: String(headSHA.prefix(7)),
             headRefName: headRefName,
             lastFetched: Date(),
+            publishedAt: publishedAt,
             reviewDecision: reviewDecision,
             mergeable: mergeable,
             queuePosition: queuePosition,
